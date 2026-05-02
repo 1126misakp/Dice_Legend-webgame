@@ -23,30 +23,49 @@
 
 ```bash
 npm install
-cp .env.example .env.local
 npm run dev
 ```
 
 开发服务器默认运行在 `http://localhost:3000`。
 
-## 环境变量
+## API Key 模式
 
-复制 `.env.example` 为 `.env.local` 后填写需要的密钥：
+项目使用用户自填 API Key 模式。打开网页后，在右上角「API 设置」中填写：
+
+- OpenRouter API Key：角色文案、立绘提示词、动态提示词
+- OpenRouter 模型：默认 `x-ai/grok-4.1-fast`，可按需改成你希望使用的大模型，主要影响文案生成
+- RunningHub API Key：角色立绘与动态化视频
+- MiniMax API Key：角色语音生成
+
+密钥默认保存在浏览器 `localStorage`，只适合个人设备。共享设备使用后请点击「清除密钥」。密钥不会写入 URL、不会进入前端构建产物，也不应提交到 Git 仓库。
+
+未填写对应 Key 时，功能会自动降级：
+
+- 无 OpenRouter：使用本地角色文案和提示词兜底
+- 无 RunningHub：不生成立绘和动态化视频，角色卡显示文字占位
+- 无 MiniMax：不生成语音，语音按钮显示缺失态
+
+## Cloudflare 部署
+
+项目提供单 Worker 部署：Cloudflare Worker 同时托管 Vite 静态资源和 `/api/*` 代理接口。
 
 ```bash
-VITE_OPENROUTER_API_KEY=你的_OpenRouter_Key
-VITE_RUNNINGHUB_API_KEY=你的_RunningHub_Key
-VITE_MINIMAX_API_KEY=你的_MiniMax_Key
+npm run build
+npm run cf:dev
+npm run deploy
 ```
 
-这些密钥只应保存在本地环境文件中，不要提交到 Git 仓库。
+Worker 不保存平台密钥，只从请求头读取用户本次提供的 Key，转发到白名单第三方接口，并统一返回 `{ ok, data, error }` 风格响应。
 
 ## 常用命令
 
 ```bash
-npm run dev      # 启动开发服务器
-npm run build    # 构建生产版本
-npm run preview  # 预览构建产物
+npm run dev        # 启动 Vite 开发服务器
+npm run cf:dev     # 构建后用 Wrangler 启动 Cloudflare Worker
+npm run typecheck  # TypeScript 类型检查
+npm run build      # 构建生产版本
+npm run preview    # 预览构建产物
+npm run deploy     # 构建并部署到 Cloudflare
 ```
 
 ## 项目结构
@@ -58,9 +77,10 @@ npm run preview  # 预览构建产物
 ├── hooks/                     # UI 音效 Hook
 ├── logic/                     # 骰子判定与角色规则
 ├── services/                  # 音效、贴图、语音等服务
-├── utils/                     # 环境变量与 RunningHub 队列
+├── src/worker/                # Cloudflare Worker 代理
+├── utils/                     # API Key、本域代理 Client 与 RunningHub 队列
 ├── types.ts                   # 核心类型定义
 ├── vite.config.ts             # Vite 配置
+├── wrangler.jsonc             # Cloudflare Worker 配置
 └── index.tsx                  # React 入口
 ```
-

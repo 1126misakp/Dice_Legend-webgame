@@ -10,14 +10,17 @@ import {
 } from 'lucide-react';
 import { runningHubQueue, getQueueStatus } from '../utils/runningHubQueue';
 import { playAudioData, getSkillTypesByRarity } from '../services/voiceService';
-import { OPENROUTER_API_KEY, RUNNINGHUB_API_KEY } from '../utils/env';
+import { ApiCapabilities, ApiKeys, DEFAULT_OPENROUTER_MODEL } from '../utils/apiKeyStore';
+import { proxyOpenRouterChat, proxyRunningHubOutputs, proxyRunningHubRun } from '../utils/apiClient';
 
 interface Props {
   info: CharacterInfo;
   onClose: () => void;
+  apiKeys: ApiKeys;
+  capabilities: ApiCapabilities;
 }
 
-const CharacterCard: React.FC<Props> = ({ info, onClose }) => {
+const CharacterCard: React.FC<Props> = ({ info, onClose, apiKeys, capabilities }) => {
   const [showFullArt, setShowFullArt] = useState(false);
 
   // Live Video State
@@ -300,11 +303,16 @@ const CharacterCard: React.FC<Props> = ({ info, onClose }) => {
 
   // --- API / LIVE Logic ---
   const generateLiveVideo = async () => {
+      if (!capabilities.runningHub || !apiKeys.runningHub.trim()) {
+          alert('未配置 RunningHub API Key，无法生成动态化视频。');
+          return;
+      }
+      if (!info.imageUrl) {
+          alert('当前角色没有立绘，无法生成动态化视频。');
+          return;
+      }
       setShowLiveConfirm(false);
       setIsLiveGenerating(true);
-
-      const EXECUTE_URL = "https://www.runninghub.cn/task/openapi/ai-app/run";
-      const QUERY_URL = "https://www.runninghub.cn/task/openapi/outputs";
 
       // 生成唯一的队列任务ID
       const localQueueId = `live-${info.name}-${Date.now()}`;
@@ -339,18 +347,15 @@ const CharacterCard: React.FC<Props> = ({ info, onClose }) => {
 
   // 实际执行视频生成的内部函数
   const executeVideoGeneration = async () => {
-      const EXECUTE_URL = "https://www.runninghub.cn/task/openapi/ai-app/run";
-      const QUERY_URL = "https://www.runninghub.cn/task/openapi/outputs";
-
       const namePart = info.name.split('·')[0];
 
       // Step 1: 使用 grok-4.1-fast 生成 LIVE 动画提示词（多模态图片理解）
       console.log("[Live] Step 1: Generating LIVE animation prompt with grok-4.1-fast...");
 
-      const liveSystemPrompt = `# Role: 成人向手游动态视效导演 (Adult Gacha Motion Director)
+      const liveSystemPrompt = `# Role: 幻想战棋手游动态视效导演 (Fantasy Tactical RPG Motion Director)
 
 ## Profile
-你是一名精通 AI 视频生成（Runway/Pika/SVD）的提示词专家，同时也是一名深谙二次元游戏视觉表现和性暗示的动作导演。你的核心能力是**"视觉势能推演"**——通过分析一张静态立绘的姿势、肌肉紧张度和特效走向，推导出"下一秒会发生什么"，并根据**稀有度分级原则**，生成对应的动态描述和带有性暗示的视频生成提示词。
+你是一名精通 AI 视频生成（Runway/Pika/SVD）的提示词专家，同时也是一名二次元游戏动作导演。你的核心能力是**"视觉势能推演"**——通过分析一张静态立绘的姿势、装备重心和特效走向，推导出"下一秒会发生什么"，并根据**稀有度分级原则**，生成对应的动态描述和全年龄视频生成提示词。
 
 ## Goals
 接收用户提供的静态立绘（或描述）及稀有度设定，输出两部分内容：
@@ -359,7 +364,7 @@ const CharacterCard: React.FC<Props> = ({ info, onClose }) => {
 
 ## Rarity & Action Scaling Logic (稀有度与动作分级逻辑)
 
-*必须严格遵守：稀有度越高，动作幅度越大，性暗示的姿势越多，运镜越剧烈，特效越夸张。*
+*必须严格遵守：稀有度越高，动作幅度越大，职业动作越鲜明，运镜越剧烈，特效越夸张。*
 
 ### 1. R (Rare) - 静态呼吸 (Living Portrait)
 * **动作逻辑**：保持原姿势不动，仅做生理性微动。
@@ -373,8 +378,8 @@ const CharacterCard: React.FC<Props> = ({ info, onClose }) => {
 * **动作幅度**：**中等 (Moderate)**。
   * *若站立*：原地踏步、整理衣服、伸手招呼。
   * *若持武器*：轻轻挥舞武器、擦拭枪支。
-  * *若诱惑姿态*：做出性暗示动作（如弯腰后挺身、脱下外套）。
-* **物理效果**：明显的乳摇（Bounce）、衣摆大幅摆动。
+  * *若待机姿态*：整理披风、握紧武器、抬手施法。
+* **物理效果**：头发、衣摆、披风和粒子大幅摆动。
 * **运镜**：缓慢的平移 (Pan)。
 
 ### 3. SSR (Specially Super Rare) - 动作释放 (Action Release)
@@ -382,14 +387,14 @@ const CharacterCard: React.FC<Props> = ({ info, onClose }) => {
 * **动作幅度**：**大 (High)**。
   * *若战斗姿态*：完成劈砍、射击后坐力、冲刺（Running/Dashing）。
   * *若施法姿态*：魔法释放出去，手势剧烈变化。
-  * *若诱惑姿态*：做出明显的性暗示动作（如弯腰后挺身、脱下外套）。
-* **物理效果**：剧烈的乳摇，腰部、屁股明显的摆动、喘息。
+  * *若防御姿态*：盾牌格挡、护甲震动、光效扩散。
+* **物理效果**：披风、发丝、武器挂饰和元素粒子剧烈运动。
 * **运镜**：跟随动作的运镜 (Tracking Shot)，背景视差明显。
 
 ### 4. UR (Ultra Rare) - 终极演出 (Cinematic Ultimate)
 * **动作逻辑**：依据静态时的姿势产生连贯且富度较大的动作。
-* **动作幅度**：饱含性暗示动作、表情与战斗、或符合静态立绘意境的动作相结合。
-* **物理效果**：夸张的物理反馈（Exaggerated Physics），爆衣、破碎，同时有明显剧烈的乳摇、腰部和屁股的摆动、喘息。
+* **动作幅度**：战斗、施法、职业表演与静态立绘意境相结合。
+* **物理效果**：夸张的物理反馈（Exaggerated Physics），魔法冲击、碎片、披风翻飞和武器震动。
 * **特效**：强烈的光影特效。
 * **运镜**：极具张力的运镜（但禁止镜头拉远）。
 
@@ -422,43 +427,31 @@ const CharacterCard: React.FC<Props> = ({ info, onClose }) => {
       let liveAnimationPrompt = "";
 
       try {
-          // 使用 grok-4.1-fast 进行多模态图片理解
-          const grokResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-              method: 'POST',
-              headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${OPENROUTER_API_KEY}`
-              },
-              body: JSON.stringify({
-                  model: "x-ai/grok-4.1-fast",
-                  messages: [
-                      { role: "system", content: liveSystemPrompt },
-                      {
-                          role: "user",
-                          content: [
-                              {
-                                  type: "image_url",
-                                  image_url: { url: info.imageUrl }
-                              },
-                              {
-                                  type: "text",
-                                  text: characterInfoText
-                              }
-                          ]
-                      }
-                  ],
-                  max_tokens: 10000,
-                  temperature: 0.8
-              })
-          });
-
-          if (!grokResponse.ok) {
-              const errorText = await grokResponse.text();
-              console.warn("[Live] Grok API failed:", grokResponse.status, errorText);
-              throw new Error(`Grok API failed: ${grokResponse.status}`);
+          if (!capabilities.openRouter || !apiKeys.openRouter.trim()) {
+              throw new Error('未配置 OpenRouter API Key');
           }
-
-          const grokData = await grokResponse.json();
+          // 使用 grok-4.1-fast 进行多模态图片理解
+          const grokData = await proxyOpenRouterChat(apiKeys.openRouter, {
+              model: apiKeys.openRouterModel || DEFAULT_OPENROUTER_MODEL,
+              messages: [
+                  { role: "system", content: liveSystemPrompt },
+                  {
+                      role: "user",
+                      content: [
+                          {
+                              type: "image_url",
+                              image_url: { url: info.imageUrl }
+                          },
+                          {
+                              type: "text",
+                              text: characterInfoText
+                          }
+                      ]
+                  }
+              ],
+              max_tokens: 10000,
+              temperature: 0.8
+          });
           const rawContent = grokData.choices?.[0]?.message?.content || "";
 
           // 清理提示词
@@ -521,8 +514,8 @@ const CharacterCard: React.FC<Props> = ({ info, onClose }) => {
           const rarityActions: Record<string, string> = {
               'R': '角色保持静止姿态，仅有轻微的呼吸起伏，头发随微风轻轻飘动，眨眼。运镜固定，画面静谧。',
               'SR': '角色在原位进行循环动作，身体微微摇摆，衣物和头发大幅飘动。运镜缓慢水平平移。',
-              'SSR': '角色释放蓄势已久的动作，武器挥舞或魔法释放。剧烈的乳摇，腰部、屁股明显的摆动、喘息。运镜跟随动作，背景视差明显。',
-              'UR': '依据静态姿势产生连贯且幅度较大的动作，饱含性暗示动作与表情。夸张的物理反馈，爆衣、破碎，剧烈的乳摇、腰部和屁股的摆动、喘息。强烈的光影特效，极具张力的运镜但禁止镜头拉远。'
+              'SSR': '角色释放蓄势已久的动作，武器挥舞或魔法释放。披风、发丝、武器挂饰和元素粒子剧烈运动。运镜跟随动作，背景视差明显。',
+              'UR': '依据静态姿势产生连贯且幅度较大的战斗或施法动作。夸张的物理反馈，魔法冲击、碎片飞散、披风翻飞和武器震动。强烈的光影特效，极具张力的运镜但禁止镜头拉远。'
           };
           liveAnimationPrompt = rarityActions[info.rarity] || rarityActions['SR'];
       }
@@ -530,37 +523,29 @@ const CharacterCard: React.FC<Props> = ({ info, onClose }) => {
       // Step 2: 调用新的 RunningHub API
       console.log("[Live] Step 2: Submitting to RunningHub with new API format...");
 
-      const res = await fetch(EXECUTE_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-              "webappId": "2004562821612535810",
-              "apiKey": RUNNINGHUB_API_KEY,
-              "nodeInfoList": [
-                  {
-                      "nodeId": "45",
-                      "fieldName": "text",
-                      "fieldValue": liveAnimationPrompt,
-                      "description": "LIVE动画完整提示词"
-                  },
-                  {
-                      "nodeId": "46",
-                      "fieldName": "text",
-                      "fieldValue": namePart,
-                      "description": "角色姓名"
-                  },
-                  {
-                      "nodeId": "39",
-                      "fieldName": "url",
-                      "fieldValue": info.imageUrl,
-                      "description": "角色立绘"
-                  }
-              ]
-          })
+      const data = await proxyRunningHubRun(apiKeys.runningHub, {
+          "webappId": "2004562821612535810",
+          "nodeInfoList": [
+              {
+                  "nodeId": "45",
+                  "fieldName": "text",
+                  "fieldValue": liveAnimationPrompt,
+                  "description": "LIVE动画完整提示词"
+              },
+              {
+                  "nodeId": "46",
+                  "fieldName": "text",
+                  "fieldValue": namePart,
+                  "description": "角色姓名"
+              },
+              {
+                  "nodeId": "39",
+                  "fieldName": "url",
+                  "fieldValue": info.imageUrl,
+                  "description": "角色立绘"
+              }
+          ]
       });
-
-      if (!res.ok) throw new Error("API Launch Failed");
-      const data = await res.json();
       if (data.code !== 0) throw new Error(data.msg || "API Error");
 
       let taskId = data.data?.taskId;
@@ -658,23 +643,7 @@ const CharacterCard: React.FC<Props> = ({ info, onClose }) => {
           await new Promise(r => setTimeout(r, pollInterval));
 
           try {
-              const qRes = await fetch(QUERY_URL, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ "taskId": taskId, "apiKey": RUNNINGHUB_API_KEY })
-              });
-
-              if (!qRes.ok) {
-                  console.warn(`[Live] Poll #${attempts + 1}: HTTP ${qRes.status} ${qRes.statusText}`);
-                  consecutiveErrors++;
-                  if (consecutiveErrors >= 15) {
-                      throw new Error(`Network error after ${consecutiveErrors} consecutive failures`);
-                  }
-                  attempts++;
-                  continue;
-              }
-
-              const qData = await qRes.json();
+              const qData = await proxyRunningHubOutputs(apiKeys.runningHub, taskId);
               consecutiveErrors = 0; // 重置错误计数
 
               // 记录每10次或状态变化时的日志
@@ -755,7 +724,7 @@ const CharacterCard: React.FC<Props> = ({ info, onClose }) => {
               }
 
           } catch (fetchError: any) {
-              if (fetchError.message?.includes('生成失败') || fetchError.message?.includes('内容审核')) {
+              if (fetchError.message?.includes('生成失败') || fetchError.message?.includes('内容审核') || fetchError.message?.includes('任务状态错误')) {
                   throw fetchError; // 直接抛出明确的失败
               }
               console.warn(`[Live] Poll #${attempts + 1} error:`, fetchError.message);
@@ -779,14 +748,8 @@ const CharacterCard: React.FC<Props> = ({ info, onClose }) => {
           console.log(`[Live] Polling ended without result. Final attempt...`);
           await new Promise(r => setTimeout(r, 5000));
 
-          const finalRes = await fetch(QUERY_URL, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ "taskId": taskId, "apiKey": RUNNINGHUB_API_KEY })
-          });
-
-          if (finalRes.ok) {
-              const finalData = await finalRes.json();
+          try {
+              const finalData = await proxyRunningHubOutputs(apiKeys.runningHub, taskId);
               console.log(`[Live] Final response:`, JSON.stringify(finalData, null, 2));
 
               // 检查 output 数组
@@ -810,6 +773,8 @@ const CharacterCard: React.FC<Props> = ({ info, onClose }) => {
                   info.videoUrl = finalVideo;
                   return;
               }
+          } catch (finalError) {
+              console.warn('[Live] Final attempt failed:', finalError);
           }
 
           throw new Error(`动态化生成超时（${attempts}次轮询）。任务可能仍在服务器处理中。\n任务ID: ${taskId}`);
@@ -1272,7 +1237,11 @@ const CharacterCard: React.FC<Props> = ({ info, onClose }) => {
                         }`}
                     />
                 ) : (
-                    <div className="w-full h-full flex items-center justify-center text-slate-600">No Image</div>
+                    <div className="w-full h-full flex flex-col items-center justify-center bg-[radial-gradient(circle_at_50%_35%,rgba(99,102,241,0.35),rgba(15,23,42,1)_62%)] text-slate-300 p-8 text-center">
+                        <Sparkles size={54} className="text-indigo-200 mb-4 drop-shadow-[0_0_18px_rgba(129,140,248,0.8)]" />
+                        <div className="text-lg font-black tracking-widest text-white">立绘未生成</div>
+                        <div className="mt-2 text-xs leading-relaxed text-slate-300/80">配置 RunningHub API Key 后，后续契约会生成角色立绘。</div>
+                    </div>
                 )}
 
                 {/* Video Layer */}
@@ -1326,9 +1295,9 @@ const CharacterCard: React.FC<Props> = ({ info, onClose }) => {
                         {!isR && (
                             <button
                                 onClick={handleLiveClick}
-                                disabled={isLiveGenerating}
-                                className="h-7 px-1.5 rounded flex items-center justify-center border backdrop-blur-sm transition-all duration-300 bg-black/40 border-white/20 text-white hover:bg-black/60 hover:border-white/40"
-                                title={videoUrl ? (isLiveActive ? "切换静态立绘" : "切换动态视频") : "生成动态"}
+                                disabled={isLiveGenerating || !capabilities.runningHub || !info.imageUrl}
+                                className={`h-7 px-1.5 rounded flex items-center justify-center border backdrop-blur-sm transition-all duration-300 ${capabilities.runningHub && info.imageUrl ? 'bg-black/40 border-white/20 text-white hover:bg-black/60 hover:border-white/40' : 'bg-slate-900/50 border-slate-500/50 text-slate-400 cursor-not-allowed'}`}
+                                title={!capabilities.runningHub ? "未配置 RunningHub API Key" : !info.imageUrl ? "没有立绘，无法生成动态" : videoUrl ? (isLiveActive ? "切换静态立绘" : "切换动态视频") : "生成动态"}
                             >
                                 {isLiveGenerating ? (
                                     <Loader2 size={14} className="animate-spin" />
@@ -1471,6 +1440,11 @@ const CharacterCard: React.FC<Props> = ({ info, onClose }) => {
                         </div>
                     </div>
                 </div>
+                {!capabilities.miniMax && (
+                    <div className="mb-3 rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-[10px] text-white/70">
+                        未配置 MiniMax API Key，角色语音未生成。
+                    </div>
+                )}
 
                 <div className="mt-2">
                     <p className="text-xs text-white/90 italic leading-relaxed text-justify drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] font-medium">

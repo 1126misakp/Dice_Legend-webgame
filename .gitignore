@@ -14,7 +14,11 @@ dist-ssr
 .env
 .env.*
 !.env.example
+.dev.vars
+.dev.vars.*
 *.tsbuildinfo
+worker-configuration.d.ts
+.wrangler/
 
 # 本地编辑器、AI 助手和设计草稿配置
 .cursor/

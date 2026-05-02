@@ -4,11 +4,8 @@
  */
 
 import { CharacterInfo, SkillType, VoiceData, CharacterVoices } from '../types';
-import { MINIMAX_API_KEY, OPENROUTER_API_KEY } from '../utils/env';
-
-// MiniMax API 配置
-const MINIMAX_VOICE_DESIGN_URL = "https://api.minimaxi.com/v1/voice_design";
-const MINIMAX_T2A_URL = "https://api.minimaxi.com/v1/t2a_v2"; // T2A v2 API，支持语速、情绪控制
+import { ApiKeys, DEFAULT_OPENROUTER_MODEL } from '../utils/apiKeyStore';
+import { proxyMiniMaxT2A, proxyMiniMaxVoiceDesign, proxyOpenRouterChat } from '../utils/apiClient';
 
 // T2A 语音合成配置
 export interface T2AConfig {
@@ -17,9 +14,6 @@ export interface T2AConfig {
   pitch?: number;     // 语调 -12 到 12，默认0
   emotion?: string;   // 情绪：happy, sad, angry, fearful, disgusted, surprised, neutral
 }
-
-// OpenRouter API 配置 (用于生成台词和音色描述，使用 grok-4.1-fast)
-const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 
 // 稀有度对应的语音数量
 export const VOICE_COUNT_BY_RARITY: Record<string, number> = {
@@ -140,11 +134,26 @@ export function getSkillTypeName(skillType: SkillType): string {
   }
 }
 
+function buildFallbackVoiceConfig(characterInfo: CharacterInfo): { voicePrompt: string; lines: Record<SkillType, string> } {
+  return {
+    voicePrompt: `${characterInfo.age}${characterInfo.gender}性的幻想角色声音，语气符合${characterInfo.profession}，带有${characterInfo.race}的神秘氛围，语速从容清晰`,
+    lines: {
+      entrance: '命运选中了我。',
+      skill1: '锋芒已至！',
+      skill2: '破开迷雾！',
+      skill3: '纹章回应我！',
+      ultimate: `以${characterInfo.attribute}之力，终结此战！`
+    }
+  };
+}
+
 /**
  * 使用OpenRouter grok-4.1-fast模型生成角色音色描述和台词
  */
 export async function generateVoicePromptAndLines(
-  characterInfo: CharacterInfo
+  characterInfo: CharacterInfo,
+  openRouterApiKey?: string,
+  openRouterModel: string = DEFAULT_OPENROUTER_MODEL
 ): Promise<{ voicePrompt: string; lines: Record<SkillType, string> }> {
   const skillTypes = getSkillTypesByRarity(characterInfo.rarity);
   
@@ -349,29 +358,20 @@ export async function generateVoicePromptAndLines(
   ${skillTypes.map(s => `"${s}_line": "${getSkillTypeName(s)}台词内容"`).join(',\n  ')}
 }`;
 
-  // 继续在下一部分...
-  const response = await fetch(OPENROUTER_API_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${OPENROUTER_API_KEY}`
-    },
-    body: JSON.stringify({
-      model: "x-ai/grok-4.1-fast",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt }
-      ],
-      max_tokens: 10000,
-      temperature: 0.7
-    })
-  });
-
-  if (!response.ok) {
-    throw new Error(`OpenRouter API调用失败: ${response.status}`);
+  if (!openRouterApiKey?.trim()) {
+    console.warn('[VoiceService] 未配置 OpenRouter API Key，使用本地语音台词兜底');
+    return buildFallbackVoiceConfig(characterInfo);
   }
 
-  const data = await response.json();
+  const data = await proxyOpenRouterChat(openRouterApiKey, {
+    model: openRouterModel,
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt }
+    ],
+    max_tokens: 10000,
+    temperature: 0.7
+  });
   const content = data.choices?.[0]?.message?.content || '';
 
   // 解析JSON响应
@@ -416,31 +416,17 @@ export async function generateVoicePromptAndLines(
  * 只调用一次，用于创建角色专属音色
  */
 export async function createVoiceDesign(
+  miniMaxApiKey: string,
   prompt: string,
   previewText: string = "你好，我是你的专属角色"
 ): Promise<{ voiceId: string; audioHex: string }> {
   console.log('[VoiceService] 调用 voice_design API 创建音色...');
-  console.log('[VoiceService] 音色描述:', prompt);
 
-  const response = await fetch(MINIMAX_VOICE_DESIGN_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${MINIMAX_API_KEY}`
-    },
-    body: JSON.stringify({
-      prompt: prompt,
-      preview_text: previewText,
-      aigc_watermark: false
-    })
+  const data = await proxyMiniMaxVoiceDesign(miniMaxApiKey, {
+    prompt: prompt,
+    preview_text: previewText,
+    aigc_watermark: false
   });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`MiniMax voice_design API调用失败: ${response.status} - ${errorText}`);
-  }
-
-  const data = await response.json();
 
   if (data.base_resp?.status_code !== 0) {
     throw new Error(`MiniMax voice_design API错误: ${data.base_resp?.status_msg || '未知错误'}`);
@@ -459,6 +445,7 @@ export async function createVoiceDesign(
  * 支持语速、音量、语调、情绪控制
  */
 export async function generateSpeechWithT2A(
+  miniMaxApiKey: string,
   voiceId: string,
   text: string,
   config: T2AConfig = {}
@@ -471,37 +458,23 @@ export async function generateSpeechWithT2A(
 
   console.log(`[VoiceService] 调用 T2A API: "${text}" (语速:${speed}, 情绪:${emotion})`);
 
-  const response = await fetch(MINIMAX_T2A_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${MINIMAX_API_KEY}`
+  const data = await proxyMiniMaxT2A(miniMaxApiKey, {
+    model: "speech-02-turbo",
+    text: text,
+    stream: false,
+    voice_setting: {
+      voice_id: voiceId,
+      speed: speed,
+      vol: vol,
+      pitch: pitch,
+      emotion: emotion
     },
-    body: JSON.stringify({
-      model: "speech-02-turbo",
-      text: text,
-      stream: false,
-      voice_setting: {
-        voice_id: voiceId,
-        speed: speed,
-        vol: vol,
-        pitch: pitch,
-        emotion: emotion
-      },
-      audio_setting: {
-        sample_rate: 32000,
-        bitrate: 128000,
-        format: "mp3"
-      }
-    })
+    audio_setting: {
+      sample_rate: 32000,
+      bitrate: 128000,
+      format: "mp3"
+    }
   });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`MiniMax T2A API调用失败: ${response.status} - ${errorText}`);
-  }
-
-  const data = await response.json();
 
   if (data.base_resp?.status_code !== 0) {
     throw new Error(`MiniMax T2A API错误: ${data.base_resp?.status_msg || '未知错误'}`);
@@ -544,15 +517,20 @@ function getEmotionForSkillType(skillType: SkillType): string {
  */
 export async function generateCharacterVoices(
   characterInfo: CharacterInfo,
+  apiKeys: ApiKeys,
   onProgress?: (current: number, total: number, skillType: SkillType) => void
 ): Promise<VoiceGenerationResult> {
   try {
+    if (!apiKeys.miniMax.trim()) {
+      return { success: false, error: '未配置 MiniMax API Key' };
+    }
+
     console.log('[VoiceService] ========================================');
     console.log('[VoiceService] 开始生成角色语音:', characterInfo.name);
     console.log('[VoiceService] ========================================');
 
     // 1. 生成音色描述和台词
-    const { voicePrompt, lines } = await generateVoicePromptAndLines(characterInfo);
+    const { voicePrompt, lines } = await generateVoicePromptAndLines(characterInfo, apiKeys.openRouter, apiKeys.openRouterModel);
     console.log('[VoiceService] 音色描述:', voicePrompt);
     console.log('[VoiceService] 台词:', lines);
 
@@ -570,7 +548,7 @@ export async function generateCharacterVoices(
       console.log(`[VoiceService] 生成${getSkillTypeName(skillType)}语音: "${line}"`);
 
       // 调用 voice_design API，同时设计音色并朗读台词
-      const result = await createVoiceDesign(voicePrompt, line);
+      const result = await createVoiceDesign(apiKeys.miniMax, voicePrompt, line);
 
       voices.push({
         voiceId: result.voiceId,

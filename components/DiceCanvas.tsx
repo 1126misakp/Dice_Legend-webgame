@@ -2,7 +2,7 @@
 import React, { useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
-import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { generateFantasyMaterialSets, generateNumericMaterials, generateRaceMaterials } from '../services/textureService';
 import { Inventory, GameState } from '../types';
 import { audioService } from '../services/audioService';

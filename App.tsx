@@ -7,14 +7,16 @@ import CharacterCard from './components/CharacterCard';
 import SummonAnimation from './components/SummonAnimation';
 import InventoryBar from './components/InventoryBar';
 import RarityParticles from './components/RarityParticles';
+import ApiSettingsPanel from './components/ApiSettingsPanel';
 import { DiceResult, GameState, Inventory, CharacterInfo } from './types';
 import { calculateDiceResult, upgradeProfession, generateFallbackInfo } from './logic/gameLogic';
-import { Dices, RefreshCw, Eye, MessageSquareQuote, Handshake, RotateCcw, Gift, ShieldCheck, Anchor } from 'lucide-react';
+import { Dices, RefreshCw, Eye, MessageSquareQuote, Handshake, RotateCcw, Gift, ShieldCheck, Anchor, KeyRound } from 'lucide-react';
 import { runningHubQueue, getQueueStatus } from './utils/runningHubQueue';
 import { audioService, Rarity } from './services/audioService';
 import { playClickSound } from './hooks/useButtonSound';
 import { generateCharacterVoices } from './services/voiceService';
-import { OPENROUTER_API_KEY, RUNNINGHUB_API_KEY } from './utils/env';
+import { ApiKeys, DEFAULT_OPENROUTER_MODEL, clearApiKeys, getApiCapabilities, loadApiKeys, saveApiKeys } from './utils/apiKeyStore';
+import { proxyOpenRouterChat, proxyRunningHubOutputs, proxyRunningHubRun } from './utils/apiClient';
 
 export default function App() {
   const diceRef = useRef<DiceCanvasRef>(null);
@@ -29,6 +31,10 @@ export default function App() {
   
   const [stylePrompt, setStylePrompt] = useState('火焰纹章风格+西式幻想RPG');
   const [inventory, setInventory] = useState<Inventory>({ crests: 1, weightedDice: 1 });
+  const [apiKeys, setApiKeys] = useState<ApiKeys>(() => loadApiKeys());
+  const [isApiSettingsOpen, setIsApiSettingsOpen] = useState(false);
+  const capabilities = getApiCapabilities(apiKeys);
+  const openRouterModel = apiKeys.openRouterModel || DEFAULT_OPENROUTER_MODEL;
   
   const [fixedDiceIndices, setFixedDiceIndices] = useState<number[]>([]);
   const [weightedDiceIndices, setWeightedDiceIndices] = useState<number[]>([]);
@@ -91,6 +97,28 @@ export default function App() {
           progressIntervalRef.current = null;
       }
       setVisualProgress(100);
+  };
+
+  const handleSaveApiKeys = (nextKeys: ApiKeys) => {
+      const saved = saveApiKeys(nextKeys);
+      setApiKeys(saved);
+  };
+
+  const handleClearApiKeys = () => {
+      setApiKeys(clearApiKeys());
+  };
+
+  const buildLocalImagePrompt = (info: CharacterInfo) => {
+      return [
+          'fantasy tactical RPG character portrait',
+          'anime game CG style',
+          `${info.race} ${info.profession}`,
+          `${info.attribute} elemental visual effects`,
+          `${info.rarity} rarity costume details`,
+          'full body character art',
+          'clean background',
+          'no text, no watermark'
+      ].join(', ');
   };
 
   // 1. 投骰结束
@@ -213,7 +241,7 @@ export default function App() {
           // 尝试获取详细错误信息
           let errorDetails = '';
           try {
-            const errorData = await response.json();
+            const errorData: any = await response.json();
             errorDetails = errorData.error?.message || errorData.message || JSON.stringify(errorData);
           } catch {
             errorDetails = `HTTP ${response.status}: ${response.statusText}`;
@@ -238,7 +266,7 @@ export default function App() {
 
     try {
       // Updated Prompt with Strict Equipment Rules
-      const systemPrompt = `你是一个《纹章传说》游戏的文案策划AI。
+      const systemPrompt = `你是一个《骰子传说》游戏的文案策划AI。
 请基于提供的角色数值设定，创作角色的【名字】、【头衔】和【人物描述】。
 
 【语言要求】你必须且只能使用中文回复，所有内容都必须是中文，包括角色名字、头衔和描述。绝对不要使用英文或其他语言。
@@ -280,29 +308,20 @@ export default function App() {
         { "name": "...", "title": "...", "description": "..." }
       `;
 
+      if (!capabilities.openRouter) {
+        console.warn("[CharacterInfo] 未配置 OpenRouter API Key，使用本地角色文案兜底");
+        generatedInfo = generateFallbackInfo(result, stylePrompt);
+      } else {
       console.log("[CharacterInfo] Starting text generation with grok-4.1-fast...");
-      const response = await fetchWithTimeout(
-        "https://openrouter.ai/api/v1/chat/completions",
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${OPENROUTER_API_KEY}`
-          },
-          body: JSON.stringify({
-            model: "x-ai/grok-4.1-fast",
-            messages: [
-              { role: "system", content: systemPrompt },
-              { role: "user", content: userPrompt }
-            ],
-            max_tokens: 10000,
-            temperature: 0.8
-          })
-        },
-        30000  // timeoutMs (30秒)
-      );
-
-      const data = await response.json();
+      const data = await proxyOpenRouterChat(apiKeys.openRouter, {
+        model: openRouterModel,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt }
+        ],
+        max_tokens: 10000,
+        temperature: 0.8
+      });
       const content = data.choices[0].message.content;
 
       // 清理可能的 Markdown 代码块包装
@@ -321,6 +340,7 @@ export default function App() {
       };
 
       console.log("[CharacterInfo] Text generation successful");
+      }
 
     } catch (e: any) {
       console.warn("Text Generation failed:", e);
@@ -351,16 +371,21 @@ export default function App() {
     // 语音生成Promise，稍后会等待它完成
     let voiceGenerationPromise: Promise<any> | null = null;
 
-    console.log('[Voice] 开始并行生成角色语音...');
-    voiceGenerationPromise = generateCharacterVoices(
-      generatedInfo,
-      (current, total, skillType) => {
-        console.log(`[Voice] 生成进度: ${current}/${total} - ${skillType}`);
-      }
-    ).catch(err => {
-      console.error('[Voice] 语音生成异常:', err);
-      return { success: false, error: err.message };
-    });
+    if (capabilities.miniMax) {
+      console.log('[Voice] 开始并行生成角色语音...');
+      voiceGenerationPromise = generateCharacterVoices(
+        generatedInfo,
+        apiKeys,
+        (current, total, skillType) => {
+          console.log(`[Voice] 生成进度: ${current}/${total} - ${skillType}`);
+        }
+      ).catch(err => {
+        console.error('[Voice] 语音生成异常:', err);
+        return { success: false, error: err.message };
+      });
+    } else {
+      console.warn('[Voice] 未配置 MiniMax API Key，跳过语音生成');
+    }
 
     // 2. 使用 OpenRouter API (grok-4.1-fast) 生成立绘提示词
     setLoadingText("灵魂连接中...");
@@ -372,10 +397,10 @@ export default function App() {
     const characterInfoForPrompt = `游戏风格:${generatedInfo.style}，姓名:${generatedInfo.name.split('·')[0]}，性别:${generatedInfo.gender}，年龄:${generatedInfo.age}，职业:${generatedInfo.profession}，种族:${generatedInfo.race}，属性:${generatedInfo.attribute}，稀有度:${generatedInfo.rarity}，人物札记:${safeDesc}`;
 
     // 立绘师系统提示词
-    const illustratorSystemPrompt = `# Role: 成人向手游首席立绘师 (Adult Gacha Game Lead Artist)
+    const illustratorSystemPrompt = `# Role: 幻想战棋手游首席立绘师 (Fantasy Tactical RPG Lead Artist)
 
 ## Profile
-你是一名拥有10年经验的顶级成人向二次元手游立绘师。你擅长使用 Midjourney / Stable Diffusion 的提示词逻辑来构筑画面。你深谙"性张力（Sex Appeal）"的视觉表达，能够根据角色的年龄、属性和稀有度，精准地设计出既符合游戏设定又极具诱惑力的角色立绘。
+你是一名拥有10年经验的幻想战棋手游立绘师。你擅长使用 Midjourney / Stable Diffusion 的提示词逻辑来构筑画面，能够根据角色的年龄、属性和稀有度，设计出符合游戏设定、装备清晰、姿态有表现力的角色立绘。
 
 ## Goals
 接收用户提供的游戏设定和角色信息，输出一段高质量的、用于AI绘画的英文提示词（Prompt）。
@@ -383,10 +408,10 @@ export default function App() {
 ## Constraints & Rules (必须严格遵守)
 1.  **核心风格**：必须是高质量的二次元/2.5D厚涂风格，强调光影、皮肤质感和解剖学的夸张美感（Game CG quality）。
 
-2.  **成人向原则 (NSFW Focus)**：
-    -   **成熟女性 (Mature/Milf)**：关键词强调丰满（Voluptuous）、肉感（Curvy）、巨大的胸部（Huge breasts）、宽胯（Wide hips）、成熟的韵味、肉腿（Thick thighs）。
-    -   **年轻女性 (Young/Petite)**：关键词强调娇小（Petite）、纤细（Slender）、贫乳或美乳（Small to medium breasts）、绝对领域、纯欲感、羞涩但诱惑的表情。
-    -   **姿势 (Poses)**：必须极具性暗示。例如：M字开脚（M-legs）、翘臀（Bent over）、拉扯衣服（Lifting clothes）、被束缚、液体沾染、眼神迷离（Ahegao-lite/Heavy blush/Looking back）。
+2.  **全年龄视觉原则 (Safe Fantasy Focus)**：
+    -   **成年角色**：强调职业气质、装备轮廓、动态姿势、面部辨识度和属性特效。
+    -   **年轻角色**：强调清爽、勇敢、可爱或灵动的冒险者气质，禁止任何性化表达。
+    -   **姿势 (Poses)**：使用战斗、施法、防御、骑乘、待机等游戏动作，禁止裸露、挑逗或性暗示姿势。
 
 3.  **稀有度视觉分级系统 (Rarity Scaling System)**：
     *这是工作的核心，稀有度越高，装备/武器/着装越华丽，动作越丰富，人物形象越美型*
@@ -397,15 +422,15 @@ export default function App() {
         -   **装备与着装**：朴素实用的装备，普通材质（布料、皮革、铁器），无华丽装饰，武器造型简洁。
         -   **姿势**：简单的站姿或坐姿，服装完整。
         -   **背景**：极简背景（Simple background），纯色或简单渐变。
-        -   **张力**：低。
+        -   **画面张力**：低。
 
     -   **SR (Super Rare)**：
         -   **视角**：**轻微角度变化**（Slightly from below/above, Dutch angle），增加画面的生动感。
         -   **角色外观**：美丽动人，有一定魅力。
         -   **装备与着装**：精致的装备，带有一些装饰细节（银饰、刺绣、镶边），武器有雕花或纹路，服装剪裁讲究。
-        -   **姿势**：动态姿势，增加局部特写（如腿部或胸部焦点）。
+        -   **姿势**：动态姿势，突出武器、施法手势或职业动作。
         -   **背景**：简单场景，背景虚化（Blurred background），有明确空间感。
-        -   **张力**：中。
+        -   **画面张力**：中。
 
     -   **SSR (Specially Super Rare)**：
         -   **视角**：**电影级动态视角**（Cinematic angle, Dynamic angle）。
@@ -413,17 +438,17 @@ export default function App() {
             -   *俯视（From above）*：强调乳沟、无辜感或被支配感。
         -   **角色外观**：绝世美貌，倾国倾城级别，五官精致完美。
         -   **装备与着装**：华丽的装备，使用高级材质（丝绸、精钢、宝石镶嵌），武器有魔法光效或元素附魔效果，服装设计感强，有披风、流苏等动态元素。
-        -   **姿势**：极具张力的构图和姿势，战损或半脱落服装，皮肤呈现汗水/精油光泽。
+        -   **姿势**：极具张力的战斗构图和姿势，装备破损仅限非暴露的战斗磨损。
         -   **背景**：精细复杂的全景，强调环境叙事和电影级光照。
-        -   **张力**：高。
+        -   **画面张力**：高。
 
     -   **UR (Ultra Rare)**：
         -   **视角**：**极端透视与视觉冲击**（Extreme foreshortening, Fisheye, Wide angle）。肢体（如脚、手、胸部）极度靠近镜头，产生打破第四面墙的立体感。
         -   **角色外观**：神颜级别，超越凡俗的绝美，如神祇或仙女下凡，散发圣洁或堕落的气质。
-        -   **装备与着装**：传说级华丽装备，极致奢华（金银丝线、发光符文、浮动的能量碎片、神圣/暗黑光环），武器有强烈的视觉特效（火焰、雷电、神圣光芒等），服装极度华丽且布料极少，如神装、圣衣、魔王战袍。
+        -   **装备与着装**：传说级华丽装备，极致奢华（金银丝线、发光符文、浮动的能量碎片、神圣/暗黑光环），武器有强烈的视觉特效（火焰、雷电、神圣光芒等），服装华丽完整，如神装、圣衣、魔王战袍。
         -   **姿势**：视觉爆炸，构图和姿势更具张力，呈现"Live2D"般的瞬间定格。
         -   **背景**：艺术化/超现实背景，神圣或堕落的领域感，背景与特效融为一体。
-        -   **张力**：**极高（Max Impact）**。
+        -   **画面张力**：**极高（Max Impact）**。
 
 4.  **属性与视觉呈现**：
     -   将用户提供的属性（如火、冰、暗）转化为对应的主色调（Theme Color）和环境光效。
@@ -480,7 +505,7 @@ export default function App() {
 生成的英文提示词需遵循以下顺序（**禁止使用quality标签**）：
 1.  **Camera & Perspective**: ([Rarity based Angle tags: foreshortening/fisheye/from below], [Focus tags])
 2.  **Character & Body**: (1girl, solo, [Race features - 具体尺寸和颜色], [Age/Body type tags], [Skin texture])
-3.  **Outfit & Job**: ([Job uniform], [Clothing details], [NSFW adjustments based on Rarity])
+3.  **Outfit & Job**: ([Job uniform], [Clothing details], [Rarity based equipment details])
 4.  **Legwear & Footwear**: ([若符合腿部装饰触发条件，必须添加：stockings/thighhighs/garter belt/high heels等])
 5.  **Pose & Expression**: ([Seductive pose], [Expression])
 6.  **Attribute & VFX**: ([Elemental effects], [Magic spells], [Color theme])
@@ -507,7 +532,7 @@ export default function App() {
         - 魔术师类(初级魔术师/魔术师/咒术大师)：身上必须有魔法纹身或刻印，**必须添加腿部装饰**
     -   根据**稀有度**确定：镜头视角、穿着物件和道具的视觉精致度（关键）、背景复杂度、特效强度、**腿部装饰的华丽程度**。
     -   根据**种族**确定：必须严格按照"种族特征系统"添加对应的种族外观特征，使用**具体的尺寸、颜色、数量**描述（如"15cm curved dragon horns"而非"大型龙角"）。
-    -   根据**年龄**确定：体型和性感的方向（可爱性感 vs 成熟性感）。**若年龄在16-45岁之间，必须添加腿部装饰（丝袜/吊带袜/高跟鞋）**。
+    -   根据**年龄**确定：体型、表情和服装成熟度。年轻角色必须保持全年龄冒险者表现。
 3.  **生成提示词**：编写一段连贯的英文Prompt，**种族特征关键词必须出现在提示词中**。
 4.  **输出结果**：只输出英文提示词，不要任何解释性文字。
 
@@ -518,60 +543,52 @@ export default function App() {
 4.  **画面无文字**：画面中绝对不能出现任何文字、字母、符号。
 5.  **纯英文输出**：只输出英文提示词，不包含任何中文或解释性文字。
 
-## 腿部装饰规则 (Legwear & Footwear System)
-**【重要】以下条件满足任意一条时，必须在提示词中加入精致的腿部装饰元素**：
+## 腿部装备规则 (Leg Armor & Footwear System)
+**【重要】以下条件满足任意一条时，必须在提示词中加入合适的腿部装备元素**：
 
 **触发条件（满足任意一条）**：
 1. **法系职业**：术士、巫术大师、召唤师、通灵大师、圣职（修道士/牧师/神官）、魔导士、贤者、大贤者、魔术师、咒术大师
 2. **敏捷系职业**：盗贼、刺客、抹杀使徒、弓箭手、狙击手、神射手
-3. **年轻角色**：年龄在16-45岁之间（命运点数2-4）
+3. **战斗角色**：需要符合职业动作的靴子、护膝或腿甲
 
 **腿部装饰关键词选择（根据角色风格和稀有度选择）**：
--   **丝袜类**：black thighhighs, white stockings, sheer pantyhose, fishnet stockings, lace-trimmed stockings, garter belt with stockings, suspender belt, thigh strap
--   **高跟鞋类**：high heels, stiletto heels, platform heels, strappy heels, ankle strap heels, mary jane heels
--   **绝对领域**：absolute territory, zettai ryouiki, visible thigh skin between skirt and stockings
+-   **护具类**：leather greaves, steel knee guards, armored boots, cloth wraps, riding boots, mage boots, ranger gaiters
+-   **鞋靴类**：combat boots, riding boots, reinforced boots, elegant mage boots
+-   **职业细节**：belt pouches, knee armor, engraved shin guards, rune patterns on boots
 
 **稀有度与腿部装饰华丽度对应**：
--   **R级**：简单的黑色或白色丝袜，普通高跟鞋
--   **SR级**：蕾丝边丝袜或网袜，精致的高跟鞋
--   **SSR级**：吊带袜配性感吊带，华丽的高跟鞋，强调绝对领域
--   **UR级**：极致奢华的蕾丝/丝绸吊带袜组合，镶嵌珠宝的高跟鞋，腿部有发光纹路或魔法效果
+-   **R级**：简单皮靴或布料绑腿
+-   **SR级**：带纹路的战斗靴或轻型护膝
+-   **SSR级**：华丽腿甲、符文靴或职业化护具
+-   **UR级**：传说级腿甲、宝石嵌饰护具、发光符文或元素特效
 
 **风格适配**：
--   法系职业优先使用：sheer/lace stockings, elegant heels, mystical leg accessories
--   敏捷系职业优先使用：thigh straps, combat heels, functional yet sexy legwear
--   年轻角色优先使用：cute knee-high socks, mary jane heels, zettai ryouiki`;
+-   法系职业优先使用：mage boots, rune patterns, mystical leg accessories
+-   敏捷系职业优先使用：light greaves, ranger gaiters, flexible combat boots
+-   骑乘职业优先使用：riding boots, reinforced knee guards, saddle-ready leg armor`;
 
     try {
+      if (!capabilities.openRouter) {
+        console.warn("[ImagePrompt] 未配置 OpenRouter API Key，使用本地立绘提示词");
+        imagePrompt = buildLocalImagePrompt(generatedInfo);
+      } else {
       console.log("[ImagePrompt] Starting image prompt generation...");
-      const openRouterResponse = await fetchWithTimeout(
-        "https://openrouter.ai/api/v1/chat/completions",
-        {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            "model": "x-ai/grok-4.1-fast",
-            "messages": [
-              { "role": "system", "content": illustratorSystemPrompt },
-              { "role": "user", "content": characterInfoForPrompt }
-            ],
-            "max_tokens": 10000,
-            "temperature": 0.8
-          })
-        },
-        30000  // timeoutMs (30秒)
-      );
-
-      const openRouterData = await openRouterResponse.json();
+      const openRouterData = await proxyOpenRouterChat(apiKeys.openRouter, {
+        "model": openRouterModel,
+        "messages": [
+          { "role": "system", "content": illustratorSystemPrompt },
+          { "role": "user", "content": characterInfoForPrompt }
+        ],
+        "max_tokens": 10000,
+        "temperature": 0.8
+      });
       imagePrompt = openRouterData.choices[0]?.message?.content || "";
 
       // 清理提示词：移除可能的 markdown 代码块标记
       imagePrompt = imagePrompt.replace(/```[\s\S]*?```/g, '').replace(/`/g, '').trim();
 
       console.log("[ImagePrompt] Generated Image Prompt:", imagePrompt);
+      }
 
     } catch (e: any) {
       console.warn("[ImagePrompt] API failed:", e);
@@ -600,10 +617,38 @@ export default function App() {
       imagePrompt = `best quality, masterpiece, 8k, highres, illustration, 1girl, solo, fantasy character`;
     }
 
-    // 3. Image Generation (RunningHub) - 使用新的工作流
-    const RUNNINGHUB_EXECUTE_URL = "https://www.runninghub.cn/task/openapi/ai-app/run";
-    const RUNNINGHUB_QUERY_URL = "https://www.runninghub.cn/task/openapi/outputs";
+    const finalizeCharacter = async (info: CharacterInfo) => {
+        audioService.playSummonSound(info.rarity as Rarity);
+        setGameState(GameState.SHOW_CARD);
+        setFixedDiceIndices([]);
+        setWeightedDiceIndices([]);
+        setConsecutiveFailures(0);
+        setConsumedItems({ crests: 0, weightedDice: 0 });
+        setCharInfo(info);
 
+        if (voiceGenerationPromise) {
+            console.log('[Voice] 等待语音生成完成...');
+            const voiceResult = await voiceGenerationPromise;
+
+            if (voiceResult?.success && voiceResult?.data) {
+                console.log('[Voice] 语音生成成功！');
+                setCharInfo({ ...info, voices: voiceResult.data });
+            } else {
+                console.warn('[Voice] 语音生成失败:', voiceResult?.error);
+            }
+        }
+    };
+
+    if (!capabilities.runningHub) {
+        console.warn('[RunningHub] 未配置 RunningHub API Key，跳过立绘生成');
+        stopProgressAnimation();
+        setLoadingText('未配置立绘服务，展示文字契约...');
+        await new Promise(r => setTimeout(r, 800));
+        await finalizeCharacter(generatedInfo);
+        return;
+    }
+
+    // 3. Image Generation (RunningHub) - 使用新的工作流
     // Helper to find URL recursively in the response structure
     const findImage = (obj: any): string | null => {
         if (!obj) return null;
@@ -643,25 +688,13 @@ export default function App() {
         startProgressAnimation();
 
         // --- Step A: Submit Task ---
-        const executeResponse = await fetch(RUNNINGHUB_EXECUTE_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                "webappId": "2004539728869425154",
-                "apiKey": RUNNINGHUB_API_KEY,
-                "nodeInfoList": [
-                    { "nodeId": "63", "fieldName": "text", "fieldValue": imagePrompt, "description": "角色立绘完整提示词" },
-                    { "nodeId": "71", "fieldName": "text", "fieldValue": generatedInfo.name.split('·')[0], "description": "角色姓名" }
-                ]
-            })
+        const executeData = await proxyRunningHubRun(apiKeys.runningHub, {
+            "webappId": "2004539728869425154",
+            "nodeInfoList": [
+                { "nodeId": "63", "fieldName": "text", "fieldValue": imagePrompt, "description": "角色立绘完整提示词" },
+                { "nodeId": "71", "fieldName": "text", "fieldValue": generatedInfo.name.split('·')[0], "description": "角色姓名" }
+            ]
         });
-
-        if (!executeResponse.ok) {
-            const errText = await executeResponse.text();
-            throw new Error(`RunningHub Launch failed: ${executeResponse.status} - ${errText}`);
-        }
-
-        const executeData = await executeResponse.json();
         if (executeData.code !== 0) {
             throw new Error(`RunningHub API error: ${executeData.msg || 'Unknown error'}`);
         }
@@ -731,14 +764,8 @@ export default function App() {
             };
 
             while (!imageUrl && attempts < maxAttempts) {
-                const queryResponse = await fetch(RUNNINGHUB_QUERY_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ "taskId": taskId, "apiKey": RUNNINGHUB_API_KEY })
-                });
-
-                if (queryResponse.ok) {
-                    const queryData = await queryResponse.json();
+                try {
+                    const queryData = await proxyRunningHubOutputs(apiKeys.runningHub, taskId);
                     console.log(`[Poll ${attempts}] Response:`, JSON.stringify(queryData).substring(0, 500));
 
                     // code 804 = APIKEY_TASK_IS_RUNNING，任务正在运行中，继续轮询
@@ -803,6 +830,12 @@ export default function App() {
                             }
                         }
                     }
+                } catch (queryError: any) {
+                    const message = queryError?.message || '';
+                    if (message.includes('安审失败') || message.includes('任务状态错误') || message.includes('Generation Failed')) {
+                        throw queryError;
+                    }
+                    console.warn(`[Poll ${attempts}] 查询失败:`, queryError);
                 }
 
                 if (imageUrl) break;
@@ -845,34 +878,7 @@ export default function App() {
                     setTimeout(resolve, 5000);
                 });
 
-                // 播放召唤成功音效（根据稀有度）
-                audioService.playSummonSound(generatedInfo.rarity as Rarity);
-
-                setGameState(GameState.SHOW_CARD);
-                setFixedDiceIndices([]);
-                setWeightedDiceIndices([]);
-                setConsecutiveFailures(0); // 召唤成功，重置连续失败计数
-                setConsumedItems({ crests: 0, weightedDice: 0 }); // 清空消耗记录
-
-                // 先显示角色卡片（无语音状态）
-                setCharInfo(generatedInfo);
-
-                // --- Step E: 等待并行的语音生成完成 ---
-                // 语音生成已经在立绘生成时并行开始了
-                if (voiceGenerationPromise) {
-                    console.log('[Voice] 等待语音生成完成...');
-                    const voiceResult = await voiceGenerationPromise;
-
-                    if (voiceResult?.success && voiceResult?.data) {
-                        console.log('[Voice] 语音生成成功！');
-                        // 更新角色信息，添加语音数据
-                        // 出场语音会在 CharacterCard 组件中自动播放
-                        const updatedInfo = { ...generatedInfo, voices: voiceResult.data };
-                        setCharInfo(updatedInfo);
-                    } else {
-                        console.warn('[Voice] 语音生成失败:', voiceResult?.error);
-                    }
-                }
+                await finalizeCharacter(generatedInfo);
             } else {
                 throw new Error("No image URL found after processing.");
             }
@@ -1136,14 +1142,22 @@ export default function App() {
             <button 
                 onClick={() => setIsStyleOpen(!isStyleOpen)}
                 className={`p-2.5 rounded-xl transition-all ${isStyleOpen ? 'bg-indigo-600 text-white shadow-lg scale-110' : 'bg-indigo-50 text-indigo-500 hover:bg-indigo-100'}`}
+                title="风格设置"
             >
                 <Dices size={24} />
+            </button>
+            <button
+                onClick={() => setIsApiSettingsOpen(true)}
+                className={`p-2.5 rounded-xl transition-all ${capabilities.openRouter && capabilities.runningHub && capabilities.miniMax ? 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100' : 'bg-amber-50 text-amber-600 hover:bg-amber-100'}`}
+                title="API 设置"
+            >
+                <KeyRound size={22} />
             </button>
             <div 
                 className="flex flex-col pr-2 cursor-pointer select-none group"
                 onClick={() => setIsStyleOpen(!isStyleOpen)}
             >
-                <h1 className="text-xl font-black font-serif tracking-widest leading-tight text-slate-900 group-hover:text-indigo-900 transition-colors">纹章传说</h1>
+                <h1 className="text-xl font-black font-serif tracking-widest leading-tight text-slate-900 group-hover:text-indigo-900 transition-colors">骰子传说</h1>
                 <div className="text-[10px] text-indigo-500 font-bold uppercase tracking-[0.2em]">Crest Summoner</div>
             </div>
             </div>
@@ -1187,7 +1201,7 @@ export default function App() {
                 />
             )}
             {showCardReveal && (
-                <CharacterCard info={charInfo} onClose={handleReset} />
+                <CharacterCard info={charInfo} onClose={handleReset} apiKeys={apiKeys} capabilities={capabilities} />
             )}
           </>
       )}
@@ -1380,6 +1394,14 @@ export default function App() {
                 <div className="text-[11px] text-center text-slate-400 font-black uppercase tracking-[0.4em]">
                     Crest: {fixedDiceIndices.length} | Weighted: {weightedDiceIndices.length}
                 </div>
+                {(!capabilities.openRouter || !capabilities.runningHub || !capabilities.miniMax) && (
+                    <button
+                        onClick={() => setIsApiSettingsOpen(true)}
+                        className="text-[11px] text-center text-amber-600 font-bold bg-amber-50/90 border border-amber-200 rounded-xl px-3 py-2 hover:bg-amber-100"
+                    >
+                        API 未完整配置：缺失能力会自动降级
+                    </button>
+                )}
             </div>
         </div>
       </div>
@@ -1405,6 +1427,15 @@ export default function App() {
             <div className="text-indigo-900 text-lg font-black tracking-[0.5em] uppercase animate-pulse">正在刻印纹章</div>
         </div>
       )}
+
+      <ApiSettingsPanel
+        apiKeys={apiKeys}
+        capabilities={capabilities}
+        open={isApiSettingsOpen}
+        onClose={() => setIsApiSettingsOpen(false)}
+        onSave={handleSaveApiKeys}
+        onClear={handleClearApiKeys}
+      />
 
       {gameState === GameState.AI_GENERATING && (() => {
          // 根据稀有度设置颜色
