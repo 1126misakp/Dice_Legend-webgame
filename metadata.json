@@ -1,0 +1,5 @@
+{
+  "name": "纹章传说",
+  "description": "基于'纹章传说'规则的高保真3D物理骰子游戏，包含属性、种族和数值骰子。",
+  "requestFramePermissions": []
+}
