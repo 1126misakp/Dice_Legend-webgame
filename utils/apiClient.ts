@@ -22,6 +22,12 @@ interface ProxyFailure {
 
 type ProxyResponse<T> = ProxySuccess<T> | ProxyFailure;
 
+export interface ApiClientOptions {
+  timeoutMs?: number;
+}
+
+const DEFAULT_TIMEOUT_MS = 30000;
+
 export class ApiClientError extends Error {
   code: string;
 
@@ -32,19 +38,34 @@ export class ApiClientError extends Error {
   }
 }
 
-async function callProxy<T>(endpoint: ApiEndpoint, apiKey: string, body: unknown): Promise<T> {
+async function callProxy<T>(endpoint: ApiEndpoint, apiKey: string, body: unknown, options: ApiClientOptions = {}): Promise<T> {
   if (!apiKey.trim()) {
     throw new ApiClientError('缺少对应的 API Key', 'MISSING_API_KEY');
   }
 
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-User-Api-Key': apiKey.trim()
-    },
-    body: JSON.stringify(body)
-  });
+  const controller = new AbortController();
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const timeoutId = globalThis.setTimeout(() => controller.abort(), timeoutMs);
+
+  let response: Response;
+  try {
+    response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-User-Api-Key': apiKey.trim()
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal
+    });
+  } catch (error) {
+    if ((error as Error).name === 'AbortError') {
+      throw new ApiClientError(`请求超时（${Math.round(timeoutMs / 1000)}秒无响应）`, 'REQUEST_TIMEOUT');
+    }
+    throw error;
+  } finally {
+    globalThis.clearTimeout(timeoutId);
+  }
 
   let payload: ProxyResponse<T> | null = null;
   try {
@@ -61,24 +82,24 @@ async function callProxy<T>(endpoint: ApiEndpoint, apiKey: string, body: unknown
   return payload.data;
 }
 
-export function proxyOpenRouterChat(apiKey: string, body: unknown): Promise<any> {
-  return callProxy('/api/openrouter/chat', apiKey, body);
+export function proxyOpenRouterChat(apiKey: string, body: unknown, options?: ApiClientOptions): Promise<any> {
+  return callProxy('/api/openrouter/chat', apiKey, body, options);
 }
 
-export function proxyRunningHubRun(apiKey: string, body: unknown): Promise<any> {
-  return callProxy('/api/runninghub/run', apiKey, body);
+export function proxyRunningHubRun(apiKey: string, body: unknown, options?: ApiClientOptions): Promise<any> {
+  return callProxy('/api/runninghub/run', apiKey, body, options);
 }
 
-export function proxyRunningHubOutputs(apiKey: string, taskId: string): Promise<any> {
-  return callProxy('/api/runninghub/outputs', apiKey, { taskId });
+export function proxyRunningHubOutputs(apiKey: string, taskId: string, options?: ApiClientOptions): Promise<any> {
+  return callProxy('/api/runninghub/outputs', apiKey, { taskId }, options);
 }
 
-export function proxyMiniMaxVoiceDesign(apiKey: string, body: unknown): Promise<any> {
-  return callProxy('/api/minimax/voice-design', apiKey, body);
+export function proxyMiniMaxVoiceDesign(apiKey: string, body: unknown, options?: ApiClientOptions): Promise<any> {
+  return callProxy('/api/minimax/voice-design', apiKey, body, options);
 }
 
-export function proxyMiniMaxT2A(apiKey: string, body: unknown): Promise<any> {
-  return callProxy('/api/minimax/t2a', apiKey, body);
+export function proxyMiniMaxT2A(apiKey: string, body: unknown, options?: ApiClientOptions): Promise<any> {
+  return callProxy('/api/minimax/t2a', apiKey, body, options);
 }
 
 export function getMissingApiKeyMessage(keys: ApiKeys): string | null {

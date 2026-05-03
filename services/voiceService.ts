@@ -171,7 +171,7 @@ export async function generateVoicePromptAndLines(
     if (ageNum >= 8 && ageNum <= 15) {
       return {
         description: '稚嫩清脆的萝莉音，声线细软甜美，像铃铛一样清亮，带有孩子气的天真感',
-        forbidden: '成熟、沉稳、低沉、沧桑、御姐、妩媚、性感、优雅、从容',
+        forbidden: '成熟、沉稳、低沉、沧桑、御姐、妩媚、魅惑化、优雅、从容',
         example: '8-15岁少女的稚嫩声音，音色清脆如银铃，语速较快，情绪天真烂漫',
         ageRange: '8-15岁少女'
       };

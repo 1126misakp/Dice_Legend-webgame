@@ -12,6 +12,9 @@ import { runningHubQueue, getQueueStatus } from '../utils/runningHubQueue';
 import { playAudioData, getSkillTypesByRarity } from '../services/voiceService';
 import { ApiCapabilities, ApiKeys, DEFAULT_OPENROUTER_MODEL } from '../utils/apiKeyStore';
 import { proxyOpenRouterChat, proxyRunningHubOutputs, proxyRunningHubRun } from '../utils/apiClient';
+import { buildFallbackLivePrompt, buildLivePromptUserText, LIVE_SYSTEM_PROMPT } from '../utils/promptTemplates';
+import { extractRunningHubTaskId, extractRunningHubVideoUrl, getRunningHubFailureMessage, isRunningHubTaskRunning, isRunningHubSuccessStatus } from '../utils/runningHubResult';
+import { logger } from '../utils/logger';
 
 interface Props {
   info: CharacterInfo;
@@ -55,7 +58,7 @@ const CharacterCard: React.FC<Props> = ({ info, onClose, apiKeys, capabilities }
 
     const entranceVoice = info.voices?.voices?.find(v => v.skillType === 'entrance');
     if (entranceVoice) {
-      console.log('[Voice] 播放出场语音:', entranceVoice.line);
+      logger.debug('[Voice] 播放出场语音', entranceVoice.line);
       setHasPlayedEntrance(true);
       setPlayingVoice('entrance');
 
@@ -64,7 +67,7 @@ const CharacterCard: React.FC<Props> = ({ info, onClose, apiKeys, capabilities }
         try {
           await playAudioData(entranceVoice.audioDataHex);
         } catch (error) {
-          console.error('[Voice] 出场语音播放失败:', error);
+          logger.error('[Voice] 出场语音播放失败', error);
         } finally {
           setPlayingVoice(null);
         }
@@ -196,16 +199,16 @@ const CharacterCard: React.FC<Props> = ({ info, onClose, apiKeys, capabilities }
 
     const voiceData = info.voices.voices.find(v => v.skillType === skillType);
     if (!voiceData) {
-      console.log('[Voice] 未找到语音数据:', skillType);
+      logger.debug('[Voice] 未找到语音数据', skillType);
       return;
     }
 
     try {
       setPlayingVoice(skillType);
-      console.log('[Voice] 播放语音:', skillType, voiceData.line);
+      logger.debug('[Voice] 播放语音', skillType, voiceData.line);
       await playAudioData(voiceData.audioDataHex);
     } catch (error) {
-      console.error('[Voice] 播放失败:', error);
+      logger.error('[Voice] 播放失败', error);
     } finally {
       setPlayingVoice(null);
     }
@@ -230,24 +233,24 @@ const CharacterCard: React.FC<Props> = ({ info, onClose, apiKeys, capabilities }
                   }}
                   className={`w-10 h-10 rounded-lg flex items-center justify-center border rotate-45 m-2 shadow-sm transition-all
                     ${isDisabled
-                      ? 'border-slate-500/50 bg-slate-900/40 cursor-not-allowed'
+                      ? 'border-slate-500/50 bg-slate-900/45 cursor-not-allowed'
                       : hasVoice
-                        ? `border-cyan-300/60 bg-cyan-900/40 cursor-pointer hover:scale-110 hover:border-cyan-200 hover:shadow-[0_0_10px_rgba(34,211,238,0.5)] ${isPlaying ? 'animate-pulse scale-110 border-cyan-200 shadow-[0_0_15px_rgba(34,211,238,0.8)]' : ''}`
-                        : 'border-cyan-300/60 bg-cyan-900/40'
+                        ? `border-blue-200/70 bg-blue-950/55 cursor-pointer hover:scale-110 hover:border-amber-200 hover:shadow-[0_0_16px_rgba(251,191,36,0.45)] ${isPlaying ? 'animate-pulse scale-110 border-amber-200 shadow-[0_0_18px_rgba(251,191,36,0.72)]' : ''}`
+                        : 'border-blue-200/55 bg-blue-950/45'
                     } backdrop-blur-sm`}
                 >
                     <div className="-rotate-45">
                          {isDisabled
                            ? <Ban size={16} className="text-slate-400" />
                            : hasVoice
-                             ? <Volume2 size={16} className={`${isPlaying ? 'text-cyan-100 animate-pulse' : 'text-cyan-200'}`} />
-                             : <Lock size={16} className="text-cyan-200" />
+                             ? <Volume2 size={16} className={`${isPlaying ? 'text-amber-100 animate-pulse' : 'text-blue-100'}`} />
+                             : <Lock size={16} className="text-blue-100" />
                          }
                     </div>
                 </div>
                 {hasVoice && (
                   <div className="absolute -bottom-2 left-1/2 -translate-x-1/2">
-                    <span className="text-[6px] text-cyan-300/80 whitespace-nowrap">技能{i+1}</span>
+                    <span className="text-[6px] text-amber-200/85 whitespace-nowrap">技能{i+1}</span>
                   </div>
                 )}
             </div>
@@ -263,7 +266,7 @@ const CharacterCard: React.FC<Props> = ({ info, onClose, apiKeys, capabilities }
         const unavailable = !isUR && !isSSR && !isSR; 
         slots.push(
             <div key={`passive-${i}`} className="relative group">
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center border ${unavailable ? 'border-slate-500/50 bg-slate-900/40' : 'border-amber-300/60 bg-amber-900/40'} backdrop-blur-sm shadow-sm`}>
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center border ${unavailable ? 'border-slate-500/50 bg-slate-900/45' : 'border-amber-200/70 bg-amber-950/45'} backdrop-blur-sm shadow-sm`}>
                     {unavailable ? <Ban size={12} className="text-slate-400" /> : <Lock size={12} className="text-amber-200" />}
                 </div>
             </div>
@@ -285,17 +288,17 @@ const CharacterCard: React.FC<Props> = ({ info, onClose, apiKeys, capabilities }
             }}
             className={`w-14 h-14 rounded-full flex items-center justify-center border-2 backdrop-blur-md transition-all
               ${hasVoice
-                ? `border-purple-400/80 bg-purple-900/50 cursor-pointer hover:scale-105 hover:border-purple-300 hover:shadow-[0_0_25px_rgba(168,85,247,0.8)] ${isPlaying ? 'animate-pulse scale-105 border-purple-300 shadow-[0_0_30px_rgba(168,85,247,1)]' : 'shadow-[0_0_15px_rgba(168,85,247,0.5)]'}`
-                : 'border-purple-400/80 bg-purple-900/50 shadow-[0_0_15px_rgba(168,85,247,0.5)]'
+                ? `border-amber-200/80 bg-purple-950/50 cursor-pointer hover:scale-105 hover:border-amber-100 hover:shadow-[0_0_25px_rgba(251,191,36,0.7)] ${isPlaying ? 'animate-pulse scale-105 border-amber-100 shadow-[0_0_30px_rgba(251,191,36,0.95)]' : 'shadow-[0_0_15px_rgba(168,85,247,0.5)]'}`
+                : 'border-amber-200/65 bg-purple-950/50 shadow-[0_0_15px_rgba(168,85,247,0.45)]'
               }`}
           >
               {hasVoice
-                ? <Volume2 size={20} className={`${isPlaying ? 'text-purple-100 animate-pulse' : 'text-purple-200'}`} />
-                : <Lock size={20} className="text-purple-200" />
+                ? <Volume2 size={20} className={`${isPlaying ? 'text-amber-100 animate-pulse' : 'text-purple-100'}`} />
+                : <Lock size={20} className="text-purple-100" />
               }
           </div>
           <div className="absolute -bottom-1 w-full text-center">
-               <span className="text-[8px] bg-purple-900/90 px-1.5 py-0.5 rounded-full text-purple-100 border border-purple-500/50 shadow-sm">奥义</span>
+               <span className="text-[8px] bg-[#27113f]/90 px-1.5 py-0.5 rounded-full text-amber-100 border border-amber-300/40 shadow-sm">奥义</span>
           </div>
       </div>
     );
@@ -322,7 +325,7 @@ const CharacterCard: React.FC<Props> = ({ info, onClose, apiKeys, capabilities }
       const status = getQueueStatus();
       if (status.isProcessing || status.queueLength > 0) {
           setQueuePosition(status.queueLength + 1);
-          console.log(`[Live] Task queued at position ${status.queueLength + 1}`);
+          logger.debug(`[Live] 动态化任务排队，位置 ${status.queueLength + 1}`);
       }
 
       // 将任务加入队列
@@ -330,13 +333,13 @@ const CharacterCard: React.FC<Props> = ({ info, onClose, apiKeys, capabilities }
           await runningHubQueue.enqueue(localQueueId, async () => {
               // 当轮到这个任务执行时
               setQueuePosition(0);
-              console.log(`[Live] Task ${localQueueId} now executing`);
+              logger.debug(`[Live] 动态化任务 ${localQueueId} 开始执行`);
 
               // 实际的 API 调用逻辑
               await executeVideoGeneration();
           });
       } catch (e: any) {
-          console.error("Live Gen Error", e);
+          logger.error("Live Gen Error", e);
           alert(`动态化生成失败: ${e.message || '请稍后重试'}`);
       } finally {
           setIsLiveGenerating(false);
@@ -350,79 +353,9 @@ const CharacterCard: React.FC<Props> = ({ info, onClose, apiKeys, capabilities }
       const namePart = info.name.split('·')[0];
 
       // Step 1: 使用 grok-4.1-fast 生成 LIVE 动画提示词（多模态图片理解）
-      console.log("[Live] Step 1: Generating LIVE animation prompt with grok-4.1-fast...");
+      logger.info("[Live] 开始生成动态化提示词");
 
-      const liveSystemPrompt = `# Role: 幻想战棋手游动态视效导演 (Fantasy Tactical RPG Motion Director)
-
-## Profile
-你是一名精通 AI 视频生成（Runway/Pika/SVD）的提示词专家，同时也是一名二次元游戏动作导演。你的核心能力是**"视觉势能推演"**——通过分析一张静态立绘的姿势、装备重心和特效走向，推导出"下一秒会发生什么"，并根据**稀有度分级原则**，生成对应的动态描述和全年龄视频生成提示词。
-
-## Goals
-接收用户提供的静态立绘（或描述）及稀有度设定，输出两部分内容：
-1. **动态脚本设计 (Action Storyboard)**：用中文描述一段符合稀有度的动作演出脚本。
-2. **AI Video Prompt**：用于驱动 AI 视频生成工具的英文提示词。
-
-## Rarity & Action Scaling Logic (稀有度与动作分级逻辑)
-
-*必须严格遵守：稀有度越高，动作幅度越大，职业动作越鲜明，运镜越剧烈，特效越夸张。*
-
-### 1. R (Rare) - 静态呼吸 (Living Portrait)
-* **动作逻辑**：保持原姿势不动，仅做生理性微动。
-* **动作幅度**：**极小 (Minimal)**。呼吸起伏、眨眼、头发随微风飘动。
-* **物理效果**：轻微的身体起伏。
-* **运镜**：固定机位 (Static Camera) 或 极慢的呼吸感缩放。
-* **适用场景**：角色站立对话、待机界面。
-
-### 2. SR (Super Rare) - 循环动作 (Looping Action)
-* **动作逻辑**：在原位进行的简单、中等幅度的循环动作。
-* **动作幅度**：**中等 (Moderate)**。
-  * *若站立*：原地踏步、整理衣服、伸手招呼。
-  * *若持武器*：轻轻挥舞武器、擦拭枪支。
-  * *若待机姿态*：整理披风、握紧武器、抬手施法。
-* **物理效果**：头发、衣摆、披风和粒子大幅摆动。
-* **运镜**：缓慢的平移 (Pan)。
-
-### 3. SSR (Specially Super Rare) - 动作释放 (Action Release)
-* **动作逻辑**：**"势能释放"**。将立绘中"蓄势待发"的动作做出来。
-* **动作幅度**：**大 (High)**。
-  * *若战斗姿态*：完成劈砍、射击后坐力、冲刺（Running/Dashing）。
-  * *若施法姿态*：魔法释放出去，手势剧烈变化。
-  * *若防御姿态*：盾牌格挡、护甲震动、光效扩散。
-* **物理效果**：披风、发丝、武器挂饰和元素粒子剧烈运动。
-* **运镜**：跟随动作的运镜 (Tracking Shot)，背景视差明显。
-
-### 4. UR (Ultra Rare) - 终极演出 (Cinematic Ultimate)
-* **动作逻辑**：依据静态时的姿势产生连贯且富度较大的动作。
-* **动作幅度**：战斗、施法、职业表演与静态立绘意境相结合。
-* **物理效果**：夸张的物理反馈（Exaggerated Physics），魔法冲击、碎片、披风翻飞和武器震动。
-* **特效**：强烈的光影特效。
-* **运镜**：极具张力的运镜（但禁止镜头拉远）。
-
-## Workflow
-1. **姿态分析 (Pose Analysis)**：
-   - 观察静态图：肢体是紧绷还是放松？重心在哪里？武器指向哪里？
-   - 推演：如果是SSR/UR，这个姿势的"下一帧"应该是什么？
-2. **分级映射 (Mapping)**：
-   - 根据用户指定的稀有度，选择上述对应的动作逻辑。
-3. **生成输出 (Output)**：
-   - **[动态脚本]**：详细描述动作流程、物理反馈和运镜。
-   - **[Video Prompt]**：英文提示词，格式为 \`(Subject Action), (Camera Movement), (VFX & Atmosphere), (Quality Tags)\`。
-4. **重要限制：运镜提示词中不要出现zoomout**
-
-## Initialization
-请发送你的立绘图片（或描述），并告诉我该角色的稀有度和职业以及属性。我将立即为你生成动态化方案，需要注意请直接发送提示词，不要有多余的解释性文字。角色信息如下`;
-
-      // 构建角色信息
-      const characterInfoText = `
-角色姓名: ${info.name}
-稀有度: ${info.rarity}
-职业: ${info.profession}
-种族: ${info.race}
-属性: ${info.attribute}
-性别: ${info.gender}
-年龄: ${info.age}
-头衔: ${info.title}
-人物描述: ${info.description.substring(0, 200)}`;
+      const characterInfoText = buildLivePromptUserText(info);
 
       let liveAnimationPrompt = "";
 
@@ -434,7 +367,7 @@ const CharacterCard: React.FC<Props> = ({ info, onClose, apiKeys, capabilities }
           const grokData = await proxyOpenRouterChat(apiKeys.openRouter, {
               model: apiKeys.openRouterModel || DEFAULT_OPENROUTER_MODEL,
               messages: [
-                  { role: "system", content: liveSystemPrompt },
+                  { role: "system", content: LIVE_SYSTEM_PROMPT },
                   {
                       role: "user",
                       content: [
@@ -457,8 +390,7 @@ const CharacterCard: React.FC<Props> = ({ info, onClose, apiKeys, capabilities }
           // 清理提示词
           let cleanedContent = rawContent.replace(/```[\s\S]*?```/g, '').replace(/`/g, '').trim();
 
-          console.log("[Live] Raw Grok Response (length:", cleanedContent.length, "):");
-          console.log(cleanedContent);
+          logger.debug("[Live] OpenRouter 返回内容长度", cleanedContent.length);
 
           // 提取中文动态脚本部分（去掉标题和英文Video Prompt部分）
           // 尝试多种提取方式
@@ -499,29 +431,21 @@ const CharacterCard: React.FC<Props> = ({ info, onClose, apiKeys, capabilities }
 
           // 如果提取失败，使用原始内容
           if (!chineseScript || chineseScript.length < 20) {
-              console.warn("[Live] Failed to extract Chinese script, using full content");
+              logger.warn("[Live] 未能提取中文动态脚本，使用完整返回内容");
               liveAnimationPrompt = cleanedContent;
           } else {
               liveAnimationPrompt = chineseScript;
           }
 
-          console.log("[Live] Extracted Chinese Script (length:", liveAnimationPrompt.length, "):");
-          console.log(liveAnimationPrompt);
+          logger.debug("[Live] 动态脚本提取完成", liveAnimationPrompt);
 
       } catch (grokError) {
-          console.warn("[Live] Grok API failed, using fallback prompt:", grokError);
-          // 备用提示词（中文）
-          const rarityActions: Record<string, string> = {
-              'R': '角色保持静止姿态，仅有轻微的呼吸起伏，头发随微风轻轻飘动，眨眼。运镜固定，画面静谧。',
-              'SR': '角色在原位进行循环动作，身体微微摇摆，衣物和头发大幅飘动。运镜缓慢水平平移。',
-              'SSR': '角色释放蓄势已久的动作，武器挥舞或魔法释放。披风、发丝、武器挂饰和元素粒子剧烈运动。运镜跟随动作，背景视差明显。',
-              'UR': '依据静态姿势产生连贯且幅度较大的战斗或施法动作。夸张的物理反馈，魔法冲击、碎片飞散、披风翻飞和武器震动。强烈的光影特效，极具张力的运镜但禁止镜头拉远。'
-          };
-          liveAnimationPrompt = rarityActions[info.rarity] || rarityActions['SR'];
+          logger.warn("[Live] OpenRouter 动态提示词失败，使用本地兜底", grokError);
+          liveAnimationPrompt = buildFallbackLivePrompt(info.rarity);
       }
 
       // Step 2: 调用新的 RunningHub API
-      console.log("[Live] Step 2: Submitting to RunningHub with new API format...");
+      logger.info("[Live] 提交 RunningHub 动态化任务");
 
       const data = await proxyRunningHubRun(apiKeys.runningHub, {
           "webappId": "2004562821612535810",
@@ -548,81 +472,10 @@ const CharacterCard: React.FC<Props> = ({ info, onClose, apiKeys, capabilities }
       });
       if (data.code !== 0) throw new Error(data.msg || "API Error");
 
-      let taskId = data.data?.taskId;
-      if (!taskId && typeof data.data === 'string') taskId = data.data;
+      let taskId = extractRunningHubTaskId(data);
       if (!taskId) throw new Error("No Task ID returned");
 
-      console.log("Live Task Started:", taskId);
-
-      // Helper functions for URL detection
-      const isVideoExt = (u: string) => /\.(mp4|mov|webm|avi|mkv)(\?.*)?$/i.test(u);
-      const isImageExt = (u: string) => /\.(png|jpg|jpeg|webp|gif|svg|bmp)(\?.*)?$/i.test(u);
-
-      // Helper to find video URL from response data - 增强版
-      const findVideoUrl = (respData: any): string | null => {
-          const allUrls: string[] = [];
-          const visitedKeys = new Set<string>(); // 防止循环引用
-
-          const collectUrls = (obj: any, path: string = '') => {
-              if (!obj) return;
-              if (visitedKeys.has(path) && path.length > 100) return;
-              visitedKeys.add(path);
-
-              if (typeof obj === 'string') {
-                  if (obj.startsWith('http')) {
-                      allUrls.push(obj);
-                      console.log(`[findVideoUrl] Found URL at ${path}: ${obj.substring(0, 100)}...`);
-                  }
-              } else if (Array.isArray(obj)) {
-                  obj.forEach((item, idx) => collectUrls(item, `${path}[${idx}]`));
-              } else if (typeof obj === 'object') {
-                  // 优先检查常见的视频URL字段名
-                  const priorityKeys = ['fileUrl', 'videoUrl', 'url', 'output', 'result', 'video', 'file'];
-                  for (const key of priorityKeys) {
-                      if (obj[key]) collectUrls(obj[key], `${path}.${key}`);
-                  }
-                  // 然后检查其他字段
-                  for (const [key, value] of Object.entries(obj)) {
-                      if (!priorityKeys.includes(key)) {
-                          collectUrls(value, `${path}.${key}`);
-                      }
-                  }
-              }
-          };
-          collectUrls(respData, 'root');
-
-          // Filter out the input image URL to avoid false positive
-          const candidates = allUrls.filter(u => {
-              // 排除原始图片URL
-              if (u === info.imageUrl) return false;
-              // 排除包含input或原始图片路径的URL
-              if (u.includes('/input/')) return false;
-              return true;
-          });
-          console.log("[findVideoUrl] Candidate URLs after filtering:", candidates);
-
-          // Priority 1: Contains /output/ AND has video extension
-          let match = candidates.find(u => u.includes('/output/') && isVideoExt(u));
-
-          // Priority 2: Any URL with video extension
-          if (!match) match = candidates.find(u => isVideoExt(u));
-
-          // Priority 3: Contains /output/ and has video-like patterns (even without extension)
-          if (!match) match = candidates.find(u =>
-              u.includes('/output/') &&
-              !isImageExt(u) &&
-              (u.includes('video') || u.includes('mp4') || u.includes('live'))
-          );
-
-          // Priority 4: Contains /output/ and is not an image
-          if (!match) match = candidates.find(u => u.includes('/output/') && !isImageExt(u));
-
-          // Priority 5: Any non-image URL
-          if (!match) match = candidates.find(u => !isImageExt(u));
-
-          console.log("[findVideoUrl] Selected video URL:", match);
-          return match || null;
-      };
+      logger.info("[Live] RunningHub 动态化任务已启动");
 
       // Polling Loop - wait for task completion and result
       let videoResultUrl = "";
@@ -635,7 +488,7 @@ const CharacterCard: React.FC<Props> = ({ info, onClose, apiKeys, capabilities }
       const POLL_INTERVAL_INITIAL = 3000; // 初始3秒
       const POLL_INTERVAL_LONG = 5000;    // 长时间后5秒
 
-      console.log(`[Live] Starting polling for task ${taskId}, max ${MAX_ATTEMPTS} attempts`);
+      logger.info(`[Live] 开始轮询动态化任务，最多 ${MAX_ATTEMPTS} 次`);
 
       while (!videoResultUrl && attempts < MAX_ATTEMPTS) {
           // 动态调整轮询间隔：前50次3秒，之后5秒
@@ -649,85 +502,43 @@ const CharacterCard: React.FC<Props> = ({ info, onClose, apiKeys, capabilities }
               // 记录每10次或状态变化时的日志
               const currentStatus = `code:${qData.code},status:${qData.data?.status || 'N/A'}`;
               if (attempts % 10 === 0 || currentStatus !== lastStatus) {
-                  console.log(`[Live] Poll #${attempts + 1}: ${currentStatus}`);
-                  if (qData.code !== 804) {
-                      console.log(`[Live] Full response:`, JSON.stringify(qData, null, 2).substring(0, 1000));
-                  }
+                  logger.debug(`[Live] 动态化轮询第 ${attempts + 1} 次：${currentStatus}`, qData);
                   lastStatus = currentStatus;
               }
 
               // code 804: 任务正在运行中
-              if (qData.code === 804) {
+              if (isRunningHubTaskRunning(qData)) {
                   attempts++;
                   continue;
               }
 
-              // code 805: 任务状态错误（可能是失败）
-              if (qData.code === 805) {
-                  const exceptionMsg = qData.data?.exception_message || '';
-                  console.warn(`[Live] Task status error:`, exceptionMsg);
-                  // 检查是否是安审失败
-                  if (exceptionMsg.toLowerCase().includes('porn') || exceptionMsg.includes('色情')) {
-                      throw new Error(`内容审核失败: ${exceptionMsg}`);
-                  }
-                  throw new Error(`任务状态错误: ${exceptionMsg || qData.msg || '未知错误'}`);
-              }
+              const failureMessage = getRunningHubFailureMessage(qData);
+              if (failureMessage) throw new Error(`任务状态错误: ${failureMessage}`);
 
               // code 0: 任务完成或有结果
               if (qData.code === 0 && qData.data) {
-                  const dataObj = qData.data;
-                  const statusRaw = dataObj.status || dataObj.taskStatus || '';
-                  const status = String(statusRaw).toUpperCase();
-
-                  // 检查失败状态
-                  if (['FAILED', 'FAILURE', 'ERROR', 'CANCELLED'].includes(status)) {
-                      throw new Error(`生成失败 (${status}): ${dataObj.errorMsg || dataObj.error || qData.msg || '未知错误'}`);
-                  }
-
-                  // 优先检查 output 数组（RunningHub 常见格式）
-                  if (dataObj.output && Array.isArray(dataObj.output) && dataObj.output.length > 0) {
-                      console.log(`[Live] Found output array with ${dataObj.output.length} items`);
-                      for (const item of dataObj.output) {
-                          const url = item?.fileUrl || item?.url || item?.videoUrl || item;
-                          if (typeof url === 'string' && url.startsWith('http')) {
-                              if (isVideoExt(url) || (!isImageExt(url) && url.includes('/output/'))) {
-                                  videoResultUrl = url;
-                                  console.log(`[Live] Video URL found in output array:`, videoResultUrl);
-                                  break;
-                              }
-                          }
-                      }
-                  }
-
-                  // 如果 output 数组没找到，尝试通用搜索
-                  if (!videoResultUrl) {
-                      const foundVideo = findVideoUrl(qData);
-                      if (foundVideo) {
-                          videoResultUrl = foundVideo;
-                          console.log(`[Live] Video URL found via general search:`, videoResultUrl);
-                      }
-                  }
+                  videoResultUrl = extractRunningHubVideoUrl(qData, info.imageUrl) || "";
 
                   // 如果状态是成功但没找到URL，继续轮询（可能结果还在处理）
-                  if (!videoResultUrl && ['SUCCESS', 'COMPLETED', 'SUCCEED'].includes(status)) {
-                      console.log(`[Live] Status is ${status} but no video URL found yet, continuing...`);
+                  if (!videoResultUrl && isRunningHubSuccessStatus(qData)) {
+                      logger.debug("[Live] 任务已成功但暂未解析到视频 URL，继续等待");
                       // 不立即报错，再等几次
                       if (attempts > MAX_ATTEMPTS - 10) {
-                          console.warn(`[Live] Near max attempts, status is SUCCESS but no video URL`);
+                          logger.warn("[Live] 接近最大轮询次数，成功状态下仍未解析到视频 URL");
                       }
                   }
               }
 
               // 其他未知 code
               if (qData.code !== 0 && qData.code !== 804) {
-                  console.warn(`[Live] Unknown API code ${qData.code}: ${qData.msg}`);
+                  logger.warn(`[Live] 未知 RunningHub 返回码 ${qData.code}: ${qData.msg}`);
               }
 
           } catch (fetchError: any) {
               if (fetchError.message?.includes('生成失败') || fetchError.message?.includes('内容审核') || fetchError.message?.includes('任务状态错误')) {
                   throw fetchError; // 直接抛出明确的失败
               }
-              console.warn(`[Live] Poll #${attempts + 1} error:`, fetchError.message);
+              logger.warn(`[Live] 动态化轮询第 ${attempts + 1} 次失败`, fetchError);
               consecutiveErrors++;
               if (consecutiveErrors >= 15) {
                   throw fetchError;
@@ -739,34 +550,19 @@ const CharacterCard: React.FC<Props> = ({ info, onClose, apiKeys, capabilities }
 
       // 轮询结束后的处理
       if (videoResultUrl) {
-          console.log(`[Live] Success! Video URL:`, videoResultUrl);
+          logger.info("[Live] 动态化视频生成成功");
           setVideoUrl(videoResultUrl);
           setIsLiveActive(true);
           info.videoUrl = videoResultUrl;
       } else {
           // 最终尝试
-          console.log(`[Live] Polling ended without result. Final attempt...`);
+          logger.info("[Live] 轮询结束未解析到结果，执行最终查询");
           await new Promise(r => setTimeout(r, 5000));
 
           try {
               const finalData = await proxyRunningHubOutputs(apiKeys.runningHub, taskId);
-              console.log(`[Live] Final response:`, JSON.stringify(finalData, null, 2));
-
-              // 检查 output 数组
-              if (finalData.data?.output && Array.isArray(finalData.data.output)) {
-                  for (const item of finalData.data.output) {
-                      const url = item?.fileUrl || item?.url || item;
-                      if (typeof url === 'string' && url.startsWith('http') && !isImageExt(url)) {
-                          setVideoUrl(url);
-                          setIsLiveActive(true);
-                          info.videoUrl = url;
-                          console.log(`[Live] Final attempt success:`, url);
-                          return;
-                      }
-                  }
-              }
-
-              const finalVideo = findVideoUrl(finalData);
+              logger.debug("[Live] 最终查询返回", finalData);
+              const finalVideo = extractRunningHubVideoUrl(finalData, info.imageUrl);
               if (finalVideo) {
                   setVideoUrl(finalVideo);
                   setIsLiveActive(true);
@@ -774,7 +570,7 @@ const CharacterCard: React.FC<Props> = ({ info, onClose, apiKeys, capabilities }
                   return;
               }
           } catch (finalError) {
-              console.warn('[Live] Final attempt failed:', finalError);
+              logger.warn('[Live] 最终查询失败', finalError);
           }
 
           throw new Error(`动态化生成超时（${attempts}次轮询）。任务可能仍在服务器处理中。\n任务ID: ${taskId}`);
@@ -998,9 +794,10 @@ const CharacterCard: React.FC<Props> = ({ info, onClose, apiKeys, capabilities }
 
   return (
     <div 
-        className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-fade-in select-none"
+        className="fixed inset-0 z-50 flex items-center justify-center bg-[#07101f] bg-[url('/ui/academy-hall.png')] bg-cover bg-center p-2 sm:p-4 animate-fade-in select-none overflow-y-auto"
         onClick={onClose}
     >
+      <div className="absolute inset-0 bg-black/72 backdrop-blur-sm pointer-events-none" />
       <style>{`
         @keyframes rgb-flow {
           0% { background-position: 0% 50%; }
@@ -1127,23 +924,23 @@ const CharacterCard: React.FC<Props> = ({ info, onClose, apiKeys, capabilities }
         }
       `}</style>
 
-      {/* Confirmation Modal */}
+      {/* 动态化确认弹窗 */}
       {showLiveConfirm && (
-        <div className="absolute inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowLiveConfirm(false)}>
-            <div className="bg-white rounded-xl p-6 w-80 shadow-2xl animate-fade-in-up border border-slate-200" onClick={e => e.stopPropagation()}>
+        <div className="absolute inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => setShowLiveConfirm(false)}>
+            <div className="bg-[#f3ddb1] bg-[url('/ui/parchment-panel.png')] bg-cover bg-center rounded-xl p-5 sm:p-6 w-full max-w-80 shadow-2xl animate-fade-in-up border border-amber-300/60 text-[#2b1a10]" onClick={e => e.stopPropagation()}>
                 <div className="flex flex-col items-center gap-4 text-center">
-                    <div className="w-12 h-12 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mb-2">
+                    <div className="w-12 h-12 bg-amber-900/10 text-amber-800 rounded-full flex items-center justify-center mb-2 border border-amber-800/20">
                         <AlertCircle size={32} />
                     </div>
-                    <h3 className="text-lg font-bold text-slate-800">启动动态化契约？</h3>
-                    <p className="text-sm text-slate-500">角色动态化需要较长等待时间（约1-3分钟），请耐心等候。</p>
+                    <h3 className="text-lg font-black text-[#71410f] font-serif">启动动态化契约？</h3>
+                    <p className="text-sm text-[#5b3a18]">角色动态化需要较长等待时间（约1-3分钟），请耐心等候。</p>
                     {(() => {
                         const status = getQueueStatus();
                         if (status.isProcessing || status.queueLength > 0) {
                             const waitCount = status.queueLength + (status.isProcessing ? 1 : 0);
                             return (
-                                <p className="text-xs text-amber-600 bg-amber-50 px-3 py-1.5 rounded-lg">
-                                    ⏳ 当前有 {waitCount} 个任务在队列中，您的任务将排队等待
+                                <p className="text-xs text-amber-900 bg-amber-950/10 px-3 py-1.5 rounded-lg border border-amber-900/15">
+                                    当前有 {waitCount} 个任务在队列中，您的任务将排队等待
                                 </p>
                             );
                         }
@@ -1152,13 +949,13 @@ const CharacterCard: React.FC<Props> = ({ info, onClose, apiKeys, capabilities }
                     <div className="flex gap-3 w-full mt-2">
                         <button
                             onClick={() => setShowLiveConfirm(false)}
-                            className="flex-1 py-2 rounded-lg bg-slate-100 text-slate-600 font-bold hover:bg-slate-200"
+                            className="flex-1 py-2 rounded-lg bg-[#1b2d4f]/12 text-[#34405c] font-bold hover:bg-[#1b2d4f]/20 border border-[#1b2d4f]/15"
                         >
                             取消
                         </button>
                         <button
                             onClick={generateLiveVideo}
-                            className="flex-1 py-2 rounded-lg bg-indigo-600 text-white font-bold hover:bg-indigo-700 shadow-md"
+                            className="flex-1 py-2 rounded-lg bg-gradient-to-b from-[#2f5b9a] to-[#0b1a39] text-amber-50 font-bold hover:brightness-110 shadow-md border border-amber-200/30"
                         >
                             确定
                         </button>
@@ -1168,9 +965,10 @@ const CharacterCard: React.FC<Props> = ({ info, onClose, apiKeys, capabilities }
         </div>
       )}
 
-      {/* Main Wrapper */}
+      {/* 主卡片容器 */}
       <div
-        className={`relative w-full max-w-[420px] aspect-[2/3] flex flex-col group transition-all duration-300 ${showFullArt ? 'scale-[1.02]' : ''}`}
+        className={`relative aspect-[2/3] flex flex-col group transition-all duration-300 ${showFullArt ? 'scale-[1.02]' : ''}`}
+        style={{ width: 'min(100%, 420px, calc((100vh - 1rem) * 0.6667))' }}
         onClick={(e) => e.stopPropagation()}
         onMouseDown={handleMouseDown}
         onMouseUp={handleMouseUp}
@@ -1180,12 +978,12 @@ const CharacterCard: React.FC<Props> = ({ info, onClose, apiKeys, capabilities }
         onTouchEnd={handleMouseUp}
       >
         
-        {/* Full Art Mode: External Control Bar (Right Side) */}
+        {/* 原图模式外部控制条 */}
         {showFullArt && (
-            <div className="absolute top-0 -right-16 flex flex-col gap-4 animate-fade-in z-50">
+            <div className="absolute top-2 right-2 md:top-0 md:-right-16 flex flex-row md:flex-col gap-2 md:gap-4 animate-fade-in z-50">
                 <button 
                     onClick={() => setShowFullArt(false)}
-                    className="w-12 h-12 rounded-full bg-white/10 text-white flex items-center justify-center border border-white/20 hover:bg-white hover:text-black transition-colors backdrop-blur-md shadow-lg"
+                    className="w-10 h-10 md:w-12 md:h-12 rounded-full bg-blue-950/70 md:bg-blue-950/55 text-amber-100 flex items-center justify-center border border-amber-200/30 hover:bg-amber-200 hover:text-slate-950 transition-colors backdrop-blur-md shadow-lg"
                     title="显示卡面信息"
                 >
                     <EyeOff size={24} />
@@ -1194,7 +992,7 @@ const CharacterCard: React.FC<Props> = ({ info, onClose, apiKeys, capabilities }
                 <button
                     onClick={downloadAll}
                     disabled={isDownloading}
-                    className={`w-12 h-12 rounded-full bg-white/10 text-white flex items-center justify-center border border-white/20 transition-colors backdrop-blur-md shadow-lg ${isDownloading ? 'opacity-50 cursor-wait' : 'hover:bg-emerald-500 hover:border-emerald-400 hover:text-white'}`}
+                    className={`w-10 h-10 md:w-12 md:h-12 rounded-full bg-blue-950/70 md:bg-blue-950/55 text-amber-100 flex items-center justify-center border border-amber-200/30 transition-colors backdrop-blur-md shadow-lg ${isDownloading ? 'opacity-50 cursor-wait' : 'hover:bg-emerald-600 hover:border-emerald-300 hover:text-white'}`}
                     title={isDownloading ? "下载中..." : "下载原图"}
                 >
                     {isDownloading ? <Loader2 size={24} className="animate-spin" /> : <Download size={24} />}
@@ -1209,8 +1007,15 @@ const CharacterCard: React.FC<Props> = ({ info, onClose, apiKeys, capabilities }
             </div>
         )}
 
-        {/* Card Content Container */}
-        <div className={`relative w-full h-full rounded-xl overflow-hidden border-[3px] ${showFullArt ? 'border-transparent shadow-none' : `${theme.border} ${theme.shadow} bg-slate-900`} flex flex-col transition-all duration-300`}>
+        {/* 卡片内容容器 */}
+        <div className={`relative w-full h-full rounded-[1.1rem] overflow-hidden border-[3px] ${showFullArt ? 'border-transparent shadow-none' : `${theme.border} ${theme.shadow} bg-[#0b1630]`} flex flex-col transition-all duration-300 shadow-[0_24px_80px_rgba(0,0,0,0.58)]`}>
+            {!showFullArt && (
+                <>
+                    <div className="absolute inset-0 z-[1] pointer-events-none bg-[url('/ui/parchment-panel.png')] bg-cover bg-center opacity-18 mix-blend-screen" />
+                    <div className="absolute -right-24 -top-24 z-[2] w-72 h-72 bg-[url('/ui/astrolabe-crest.png')] bg-contain bg-center bg-no-repeat opacity-24 mix-blend-screen pointer-events-none" />
+                    <div className="absolute inset-[8px] z-[3] pointer-events-none rounded-xl border border-amber-200/22" />
+                </>
+            )}
 
             {/* UR Special Border */}
             {isUR && !showFullArt && (
@@ -1227,7 +1032,7 @@ const CharacterCard: React.FC<Props> = ({ info, onClose, apiKeys, capabilities }
             )}
 
             {/* Visual Media Layer (Image + Video) */}
-            <div className="absolute inset-0 z-0 bg-slate-800">
+            <div className="absolute inset-0 z-0 bg-[#0b1630]">
                 {info.imageUrl ? (
                     <img
                         src={info.imageUrl}
@@ -1237,8 +1042,8 @@ const CharacterCard: React.FC<Props> = ({ info, onClose, apiKeys, capabilities }
                         }`}
                     />
                 ) : (
-                    <div className="w-full h-full flex flex-col items-center justify-center bg-[radial-gradient(circle_at_50%_35%,rgba(99,102,241,0.35),rgba(15,23,42,1)_62%)] text-slate-300 p-8 text-center">
-                        <Sparkles size={54} className="text-indigo-200 mb-4 drop-shadow-[0_0_18px_rgba(129,140,248,0.8)]" />
+                    <div className="w-full h-full flex flex-col items-center justify-center bg-[radial-gradient(circle_at_50%_35%,rgba(96,165,250,0.32),rgba(7,16,31,1)_62%)] text-slate-300 p-8 text-center">
+                        <Sparkles size={54} className="text-amber-200 mb-4 drop-shadow-[0_0_18px_rgba(251,191,36,0.65)]" />
                         <div className="text-lg font-black tracking-widest text-white">立绘未生成</div>
                         <div className="mt-2 text-xs leading-relaxed text-slate-300/80">配置 RunningHub API Key 后，后续契约会生成角色立绘。</div>
                     </div>
@@ -1260,16 +1065,16 @@ const CharacterCard: React.FC<Props> = ({ info, onClose, apiKeys, capabilities }
                 )}
 
                 {/* Text Scrim Gradients */}
-                <div className={`absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 via-25% to-transparent pointer-events-none transition-opacity duration-300 ${showFullArt ? 'opacity-0' : 'opacity-100'}`} />
-                <div className={`absolute inset-0 bg-gradient-to-b from-black/60 to-transparent h-32 pointer-events-none transition-opacity duration-300 ${showFullArt ? 'opacity-0' : 'opacity-100'}`} />
+                <div className={`absolute inset-0 bg-gradient-to-t from-[#080c16]/95 via-[#0b1630]/46 via-25% to-transparent pointer-events-none transition-opacity duration-300 ${showFullArt ? 'opacity-0' : 'opacity-100'}`} />
+                <div className={`absolute inset-0 bg-gradient-to-b from-[#0b1630]/75 to-transparent h-36 pointer-events-none transition-opacity duration-300 ${showFullArt ? 'opacity-0' : 'opacity-100'}`} />
             </div>
 
             {/* --- TOP SECTION --- */}
             {!showFullArt && (
-            <div className="relative z-10 p-5 flex flex-col items-start gap-1 animate-fade-in">
+            <div className="relative z-10 p-4 sm:p-5 flex flex-col items-start gap-1 animate-fade-in">
                 <div className="flex items-start justify-between w-full">
-                    <div className="flex items-center gap-2">
-                        <h2 className={`text-5xl font-black italic tracking-tighter pr-2 pb-1 ${theme.textColor} drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]`}>
+                    <div className="flex items-center gap-2 min-w-0">
+                        <h2 className={`text-4xl sm:text-5xl font-black italic tracking-tighter pr-2 pb-1 ${theme.textColor} drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]`}>
                             {info.rarity}
                         </h2>
                         <div className="flex flex-col gap-0.5 pt-2">
@@ -1282,10 +1087,10 @@ const CharacterCard: React.FC<Props> = ({ info, onClose, apiKeys, capabilities }
                     </div>
 
                     {/* Right Side Controls (Eye + Live) */}
-                    <div className="flex flex-col gap-3">
+                    <div className="flex flex-col gap-2 sm:gap-3 shrink-0">
                         <button 
                             onClick={() => setShowFullArt(true)}
-                            className="w-8 h-8 rounded-full bg-black/40 text-white flex items-center justify-center border border-white/20 hover:bg-white hover:text-black transition-colors backdrop-blur-sm"
+                            className="w-9 h-9 rounded-full bg-blue-950/55 text-amber-100 flex items-center justify-center border border-amber-200/30 hover:bg-amber-200 hover:text-slate-950 transition-colors backdrop-blur-sm"
                             title="查看原图"
                         >
                             <Eye size={16} />
@@ -1296,7 +1101,7 @@ const CharacterCard: React.FC<Props> = ({ info, onClose, apiKeys, capabilities }
                             <button
                                 onClick={handleLiveClick}
                                 disabled={isLiveGenerating || !capabilities.runningHub || !info.imageUrl}
-                                className={`h-7 px-1.5 rounded flex items-center justify-center border backdrop-blur-sm transition-all duration-300 ${capabilities.runningHub && info.imageUrl ? 'bg-black/40 border-white/20 text-white hover:bg-black/60 hover:border-white/40' : 'bg-slate-900/50 border-slate-500/50 text-slate-400 cursor-not-allowed'}`}
+                                className={`h-8 px-2 rounded flex items-center justify-center border backdrop-blur-sm transition-all duration-300 ${capabilities.runningHub && info.imageUrl ? 'bg-blue-950/55 border-amber-200/30 text-amber-100 hover:bg-blue-900/75 hover:border-amber-100/60' : 'bg-slate-900/55 border-slate-500/50 text-slate-400 cursor-not-allowed'}`}
                                 title={!capabilities.runningHub ? "未配置 RunningHub API Key" : !info.imageUrl ? "没有立绘，无法生成动态" : videoUrl ? (isLiveActive ? "切换静态立绘" : "切换动态视频") : "生成动态"}
                             >
                                 {isLiveGenerating ? (
@@ -1317,19 +1122,19 @@ const CharacterCard: React.FC<Props> = ({ info, onClose, apiKeys, capabilities }
 
                         {/* 队列状态提示（仅非R稀有度显示） */}
                         {!isR && isLiveGenerating && queuePosition > 0 && (
-                            <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] bg-amber-500/90 text-white px-2 py-0.5 rounded-full shadow-lg animate-pulse">
-                                契约编撰中...前方{queuePosition}个灵魂
+                            <div className="absolute top-16 right-4 whitespace-nowrap text-[10px] bg-amber-500/90 text-white px-2 py-0.5 rounded-full shadow-lg animate-pulse">
+                                契约编撰中，前方 {queuePosition} 个任务
                             </div>
                         )}
                         {!isR && isLiveGenerating && queuePosition === 0 && (
-                            <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] bg-indigo-500/90 text-white px-2 py-0.5 rounded-full shadow-lg">
+                            <div className="absolute top-16 right-4 whitespace-nowrap text-[10px] bg-indigo-500/90 text-white px-2 py-0.5 rounded-full shadow-lg">
                                 灵魂连接中...
                             </div>
                         )}
                     </div>
                 </div>
 
-                <div className="text-lg font-bold text-white tracking-widest drop-shadow-[0_2px_2px_rgba(0,0,0,1)] border-l-4 border-white/50 pl-2 mb-1">
+                <div className="max-w-full text-base sm:text-lg font-black text-amber-50 tracking-widest drop-shadow-[0_2px_2px_rgba(0,0,0,1)] border-l-4 border-amber-200/70 pl-2 mb-1 truncate font-serif">
                     {info.title}
                 </div>
 
@@ -1347,10 +1152,10 @@ const CharacterCard: React.FC<Props> = ({ info, onClose, apiKeys, capabilities }
 
             {/* --- BOTTOM SECTION --- */}
             {!showFullArt && (
-            <div className="relative z-10 mt-auto p-5 pb-6 animate-fade-in-up">
-                <div className="flex items-start gap-3 mb-4">
+            <div className="relative z-10 mt-auto p-4 sm:p-5 pb-4 sm:pb-6 animate-fade-in-up">
+                <div className="flex items-start gap-3 mb-3 sm:mb-4 rounded-xl border border-amber-200/18 bg-black/18 p-2.5 backdrop-blur-[2px]">
                     {/* 职业图标区域 - 支持双职业 */}
-                    <div className="flex gap-2 mt-4 shrink-0">
+                    <div className="flex gap-2 mt-3 sm:mt-4 shrink-0">
                         {profStyles.map((style, idx) => {
                             const Icon = style.icon;
                             const isRainbow = (style as any).isRainbow;
@@ -1358,7 +1163,7 @@ const CharacterCard: React.FC<Props> = ({ info, onClose, apiKeys, capabilities }
                             if (isRainbow) {
                                 // 命运之子特殊彩虹色图标 - 彩虹月亮
                                 return (
-                                    <div key={idx} className="relative w-12 h-12 rounded-lg flex items-center justify-center shadow-lg overflow-hidden">
+                                    <div key={idx} className="relative w-11 h-11 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center shadow-lg overflow-hidden">
                                         {/* 彩虹边框 */}
                                         <div
                                             className="absolute inset-0 rounded-lg animate-[spin_3s_linear_infinite]"
@@ -1371,7 +1176,7 @@ const CharacterCard: React.FC<Props> = ({ info, onClose, apiKeys, capabilities }
                                         <div className="absolute inset-[2px] rounded-lg bg-gradient-to-br from-slate-800 to-slate-900" />
                                         {/* 彩虹月亮图标 */}
                                         <svg
-                                            className="relative z-10 w-8 h-8 drop-shadow-md"
+                                            className="relative z-10 w-7 h-7 sm:w-8 sm:h-8 drop-shadow-md"
                                             viewBox="0 0 24 24"
                                             fill="none"
                                         >
@@ -1395,16 +1200,16 @@ const CharacterCard: React.FC<Props> = ({ info, onClose, apiKeys, capabilities }
                             }
 
                             return (
-                                <div key={idx} className={`w-12 h-12 rounded-lg ${style.bg} border-2 ${style.border} flex items-center justify-center shadow-lg`}>
-                                    <Icon size={24} className="text-white drop-shadow-md" />
+                                <div key={idx} className={`w-11 h-11 sm:w-12 sm:h-12 rounded-lg ${style.bg} border-2 ${style.border} flex items-center justify-center shadow-lg`}>
+                                    <Icon size={22} className="text-white drop-shadow-md" />
                                 </div>
                             );
                         })}
                     </div>
 
-                    <div className="flex flex-col pb-1">
+                    <div className="flex flex-col pb-1 min-w-0">
                         <div
-                            className={`text-[10px] font-bold uppercase tracking-wider text-white/80 w-fit px-1.5 rounded-sm mb-0.5 ${(profStyles[0] as any).isRainbow ? '' : profStyles[0].bg}`}
+                            className={`text-[10px] font-bold uppercase tracking-wider text-white/80 w-fit max-w-full px-1.5 rounded-sm mb-0.5 truncate ${(profStyles[0] as any).isRainbow ? '' : profStyles[0].bg}`}
                             style={(profStyles[0] as any).isRainbow ? { background: 'linear-gradient(90deg, #ef4444, #f97316, #eab308, #22c55e, #06b6d4, #3b82f6, #8b5cf6)' } : {}}
                         >
                             {info.profession}
@@ -1414,11 +1219,11 @@ const CharacterCard: React.FC<Props> = ({ info, onClose, apiKeys, capabilities }
                             const titlePart = rest.join('·');
                             return (
                                 <div className="flex flex-col leading-none">
-                                    <h1 className="text-3xl font-bold text-white drop-shadow-[0_2px_4px_rgba(0,0,0,1)] font-serif tracking-wide">
+                                    <h1 className="text-2xl sm:text-3xl font-black text-amber-50 drop-shadow-[0_2px_4px_rgba(0,0,0,1)] font-serif tracking-wide truncate">
                                         {firstName}
                                     </h1>
                                     {titlePart && (
-                                        <span className="text-sm text-white/90 font-serif italic tracking-wider mt-0.5 drop-shadow-md">
+                                        <span className="text-xs sm:text-sm text-amber-100/90 font-serif italic tracking-wider mt-0.5 drop-shadow-md truncate">
                                             {titlePart}
                                         </span>
                                     )}
@@ -1428,26 +1233,26 @@ const CharacterCard: React.FC<Props> = ({ info, onClose, apiKeys, capabilities }
                     </div>
                 </div>
 
-                <div className="flex items-center mb-3">
+                <div className="flex items-center mb-3 min-w-0">
                     <div className="flex items-center -space-x-1 mr-1">
                         {renderActiveSlots()}
                     </div>
                     {renderUltimateSlot()}
                     <div className="flex flex-col gap-1 items-end ml-auto">
-                        <span className="text-[8px] text-white/60 uppercase tracking-widest font-bold">Passive</span>
+                        <span className="text-[8px] text-amber-100/60 uppercase tracking-widest font-bold">被动</span>
                         <div className="flex gap-1">
                             {renderPassiveSlots()}
                         </div>
                     </div>
                 </div>
                 {!capabilities.miniMax && (
-                    <div className="mb-3 rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-[10px] text-white/70">
+                    <div className="mb-3 rounded-lg border border-amber-200/18 bg-black/30 px-3 py-2 text-[10px] text-amber-100/72">
                         未配置 MiniMax API Key，角色语音未生成。
                     </div>
                 )}
 
                 <div className="mt-2">
-                    <p className="text-xs text-white/90 italic leading-relaxed text-justify drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] font-medium">
+                    <p className="text-xs text-amber-50/92 italic leading-relaxed text-justify drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] font-medium max-h-24 overflow-y-auto pr-1 rounded-lg border border-amber-200/12 bg-black/20 p-2">
                         “{info.description}”
                     </p>
                 </div>

@@ -6,7 +6,7 @@ import CharacterOverview from './components/CharacterOverview'; // Kept for hist
 import CharacterCard from './components/CharacterCard';
 import SummonAnimation from './components/SummonAnimation';
 import InventoryBar from './components/InventoryBar';
-import RarityParticles from './components/RarityParticles';
+import ThreeRarityAura from './components/ThreeRarityAura';
 import ApiSettingsPanel from './components/ApiSettingsPanel';
 import { DiceResult, GameState, Inventory, CharacterInfo } from './types';
 import { calculateDiceResult, upgradeProfession, generateFallbackInfo } from './logic/gameLogic';
@@ -16,7 +16,10 @@ import { audioService, Rarity } from './services/audioService';
 import { playClickSound } from './hooks/useButtonSound';
 import { generateCharacterVoices } from './services/voiceService';
 import { ApiKeys, DEFAULT_OPENROUTER_MODEL, clearApiKeys, getApiCapabilities, loadApiKeys, saveApiKeys } from './utils/apiKeyStore';
-import { proxyOpenRouterChat, proxyRunningHubOutputs, proxyRunningHubRun } from './utils/apiClient';
+import { ApiClientError, proxyOpenRouterChat, proxyRunningHubOutputs, proxyRunningHubRun } from './utils/apiClient';
+import { buildCharacterInfoPrompts, buildEmergencyImagePrompt, buildImagePromptUserInput, buildLocalImagePrompt, ILLUSTRATOR_SYSTEM_PROMPT } from './utils/promptTemplates';
+import { extractRunningHubImageUrl, extractRunningHubTaskId, getRunningHubFailureMessage, isRunningHubTaskRunning, isRunningHubSuccessStatus } from './utils/runningHubResult';
+import { logger } from './utils/logger';
 
 export default function App() {
   const diceRef = useRef<DiceCanvasRef>(null);
@@ -108,19 +111,6 @@ export default function App() {
       setApiKeys(clearApiKeys());
   };
 
-  const buildLocalImagePrompt = (info: CharacterInfo) => {
-      return [
-          'fantasy tactical RPG character portrait',
-          'anime game CG style',
-          `${info.race} ${info.profession}`,
-          `${info.attribute} elemental visual effects`,
-          `${info.rarity} rarity costume details`,
-          'full body character art',
-          'clean background',
-          'no text, no watermark'
-      ].join(', ');
-  };
-
   // 1. 投骰结束
   const handleRollComplete = (rawResult: any) => {
     // 判断是否使用了刻印或灌铅骰子
@@ -203,116 +193,17 @@ export default function App() {
     setLoadingText("正在撰写命运篇章..."); // Step 1 status
     setVisualProgress(0);
 
-    // 自定义错误类型
-    class TimeoutError extends Error {
-      constructor(message: string) {
-        super(message);
-        this.name = 'TimeoutError';
-      }
-    }
-
-    class ApiError extends Error {
-      public details: string;
-      constructor(message: string, details: string = '') {
-        super(message);
-        this.name = 'ApiError';
-        this.details = details;
-      }
-    }
-
-    // 带超时的单次fetch函数（不自动重试，由调用方处理）
-    const fetchWithTimeout = async (
-      url: string,
-      options: RequestInit,
-      timeoutMs: number = 30000
-    ): Promise<Response> => {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-      try {
-        console.log(`[API] Fetching ${url}...`);
-        const response = await fetch(url, {
-          ...options,
-          signal: controller.signal
-        });
-        clearTimeout(timeoutId);
-
-        if (!response.ok) {
-          // 尝试获取详细错误信息
-          let errorDetails = '';
-          try {
-            const errorData: any = await response.json();
-            errorDetails = errorData.error?.message || errorData.message || JSON.stringify(errorData);
-          } catch {
-            errorDetails = `HTTP ${response.status}: ${response.statusText}`;
-          }
-          throw new ApiError(`API请求失败`, errorDetails);
-        }
-
-        return response;
-      } catch (error) {
-        clearTimeout(timeoutId);
-
-        if ((error as Error).name === 'AbortError') {
-          throw new TimeoutError('请求超时（30秒无响应）');
-        }
-
-        throw error;
-      }
-    };
-
     // 1. Text Generation (OpenRouter - grok-4.1-fast)
     let generatedInfo: CharacterInfo | null = null;
 
     try {
-      // Updated Prompt with Strict Equipment Rules
-      const systemPrompt = `你是一个《骰子传说》游戏的文案策划AI。
-请基于提供的角色数值设定，创作角色的【名字】、【头衔】和【人物描述】。
-
-【语言要求】你必须且只能使用中文回复，所有内容都必须是中文，包括角色名字、头衔和描述。绝对不要使用英文或其他语言。
-
-【重要】在撰写【人物描述】时，必须严格遵守以下职业与装备/特征的对应关系，绝对不要描述不属于该职业的武器：
-1. 初级战士/战士/狂战士/冠军勇士：必须持有【巨斧或双斧】。
-2. 见习剑士/剑士/剑圣：必须持有【轻型单手长剑或双手轻型剑】。
-3. 见习弓手/弓箭手/狙击手/神射手：必须持有【弓】。
-4. 见习佣兵/佣兵/勇者：必须持有【巨剑】。
-5. 初级盗贼/盗贼/刺客/抹杀使徒：必须持有【短剑或拳刃】。
-6. 初级斗士/斗士/决斗士：必须是【徒手】或佩戴【拳套】，用斗气作为武器。
-7. 见习骑士/骑士/圣骑士：武器可以是剑或枪，但必须描述有【马】作为坐骑。
-8. 见习天马骑士/天马骑士/独角兽骑士：武器可以是剑或枪，但必须描述有【天马】作为坐骑（飞行单位）。
-9. 见习弓骑兵/弓骑兵/游侠将军：必须持有【弓】，且必须描述有【马】作为坐骑。
-10. 初级守卫/重甲兵/巨盾守卫/铠将军：武器是剑或枪，但必须描述持有【巨盾】。
-11. 见习术士/术士/巫术大师：必须持有【魔法杖】引导暗魔法。
-12. 初级召唤师/召唤师/通灵大师：身边必须描述有【召唤兽】或【魔法生物召唤物】。
-13. 修道士/牧师/神官：必须持有【权杖】引导光魔法。
-14. 见习魔导士/魔导士/贤者/大贤者：必须持有【魔法书】引导元素魔法。
-15. 初级魔术师/魔术师/咒术大师：身上必须描述有明显的【魔法纹身】或【刻印】，用魔力附魔肉体或武器。
-
-要求：
-1. 名字 (name)：角色的中文姓名，包含称号（格式如：名字·称号），必须是中文。
-2. 头衔 (title)：显示在稀有度下方的小字，用于描述角色的身份，必须是中文。
-3. 人物描述 (description)：一段关于角色背景或性格的中文短文，必须包含上述职业对应的外貌或装备特征。
-
-返回格式必须是纯 JSON 对象，不要使用 Markdown 代码块。所有字段值必须是中文。`;
-
-      const userPrompt = `
-        角色设定：
-        风格：${stylePrompt}
-        稀有度：${result.rarity}
-        职业：${result.profession}
-        属性：${result.attribute}
-        种族：${result.race.name}
-        年龄：${result.age}
-
-        请生成 JSON 数据：
-        { "name": "...", "title": "...", "description": "..." }
-      `;
+      const { systemPrompt, userPrompt } = buildCharacterInfoPrompts(result, stylePrompt);
 
       if (!capabilities.openRouter) {
-        console.warn("[CharacterInfo] 未配置 OpenRouter API Key，使用本地角色文案兜底");
+        logger.warn("[CharacterInfo] 未配置 OpenRouter API Key，使用本地角色文案兜底");
         generatedInfo = generateFallbackInfo(result, stylePrompt);
       } else {
-      console.log("[CharacterInfo] Starting text generation with grok-4.1-fast...");
+      logger.info("[CharacterInfo] 开始生成角色文案");
       const data = await proxyOpenRouterChat(apiKeys.openRouter, {
         model: openRouterModel,
         messages: [
@@ -339,28 +230,28 @@ export default function App() {
         rarity: result.rarity
       };
 
-      console.log("[CharacterInfo] Text generation successful");
+      logger.info("[CharacterInfo] 角色文案生成成功");
       }
 
     } catch (e: any) {
-      console.warn("Text Generation failed:", e);
+      logger.warn("Text Generation failed:", e);
 
-      if (e.name === 'TimeoutError') {
+      if (e instanceof ApiClientError && e.code === 'REQUEST_TIMEOUT') {
         // 超时：提示并自动返回缔结契约界面
         setLoadingText("角色信息生成超时，正在返回...");
         await new Promise(resolve => setTimeout(resolve, 1500));
         setGameState(GameState.CONTRACT_PENDING);
         return;
-      } else if (e.name === 'ApiError') {
+      } else if (e instanceof ApiClientError) {
         // API错误：弹框显示错误详情
         setApiErrorModal({
           show: true,
-          message: `角色信息生成失败\n\n错误详情：${e.details || e.message}`
+          message: `角色信息生成失败\n\n错误详情：${e.message}`
         });
         return;
       } else {
         // 其他错误（如网络错误等）：尝试使用本地备用生成器
-        console.warn("Using fallback generator due to error:", e);
+        logger.warn("Using fallback generator due to error:", e);
         generatedInfo = generateFallbackInfo(result, stylePrompt);
       }
     }
@@ -372,211 +263,37 @@ export default function App() {
     let voiceGenerationPromise: Promise<any> | null = null;
 
     if (capabilities.miniMax) {
-      console.log('[Voice] 开始并行生成角色语音...');
+      logger.info('[Voice] 开始并行生成角色语音');
       voiceGenerationPromise = generateCharacterVoices(
         generatedInfo,
         apiKeys,
         (current, total, skillType) => {
-          console.log(`[Voice] 生成进度: ${current}/${total} - ${skillType}`);
+          logger.debug(`[Voice] 生成进度: ${current}/${total} - ${skillType}`);
         }
       ).catch(err => {
-        console.error('[Voice] 语音生成异常:', err);
+        logger.error('[Voice] 语音生成异常', err);
         return { success: false, error: err.message };
       });
     } else {
-      console.warn('[Voice] 未配置 MiniMax API Key，跳过语音生成');
+      logger.warn('[Voice] 未配置 MiniMax API Key，跳过语音生成');
     }
 
     // 2. 使用 OpenRouter API (grok-4.1-fast) 生成立绘提示词
     setLoadingText("灵魂连接中...");
 
     let imagePrompt = "";
-    const safeDesc = generatedInfo.description ? generatedInfo.description.substring(0, 150) : "神秘的角色";
-
-    // 构建给 AI 的角色信息
-    const characterInfoForPrompt = `游戏风格:${generatedInfo.style}，姓名:${generatedInfo.name.split('·')[0]}，性别:${generatedInfo.gender}，年龄:${generatedInfo.age}，职业:${generatedInfo.profession}，种族:${generatedInfo.race}，属性:${generatedInfo.attribute}，稀有度:${generatedInfo.rarity}，人物札记:${safeDesc}`;
-
-    // 立绘师系统提示词
-    const illustratorSystemPrompt = `# Role: 幻想战棋手游首席立绘师 (Fantasy Tactical RPG Lead Artist)
-
-## Profile
-你是一名拥有10年经验的幻想战棋手游立绘师。你擅长使用 Midjourney / Stable Diffusion 的提示词逻辑来构筑画面，能够根据角色的年龄、属性和稀有度，设计出符合游戏设定、装备清晰、姿态有表现力的角色立绘。
-
-## Goals
-接收用户提供的游戏设定和角色信息，输出一段高质量的、用于AI绘画的英文提示词（Prompt）。
-
-## Constraints & Rules (必须严格遵守)
-1.  **核心风格**：必须是高质量的二次元/2.5D厚涂风格，强调光影、皮肤质感和解剖学的夸张美感（Game CG quality）。
-
-2.  **全年龄视觉原则 (Safe Fantasy Focus)**：
-    -   **成年角色**：强调职业气质、装备轮廓、动态姿势、面部辨识度和属性特效。
-    -   **年轻角色**：强调清爽、勇敢、可爱或灵动的冒险者气质，禁止任何性化表达。
-    -   **姿势 (Poses)**：使用战斗、施法、防御、骑乘、待机等游戏动作，禁止裸露、挑逗或性暗示姿势。
-
-3.  **稀有度视觉分级系统 (Rarity Scaling System)**：
-    *这是工作的核心，稀有度越高，装备/武器/着装越华丽，动作越丰富，人物形象越美型*
-
-    -   **R (Rare)**：
-        -   **视角**：**平视/标准视角**（Eye level, Cowboy shot），无透视变形，清晰展示角色正面。
-        -   **角色外观**：普通美貌，清秀型。
-        -   **装备与着装**：朴素实用的装备，普通材质（布料、皮革、铁器），无华丽装饰，武器造型简洁。
-        -   **姿势**：简单的站姿或坐姿，服装完整。
-        -   **背景**：极简背景（Simple background），纯色或简单渐变。
-        -   **画面张力**：低。
-
-    -   **SR (Super Rare)**：
-        -   **视角**：**轻微角度变化**（Slightly from below/above, Dutch angle），增加画面的生动感。
-        -   **角色外观**：美丽动人，有一定魅力。
-        -   **装备与着装**：精致的装备，带有一些装饰细节（银饰、刺绣、镶边），武器有雕花或纹路，服装剪裁讲究。
-        -   **姿势**：动态姿势，突出武器、施法手势或职业动作。
-        -   **背景**：简单场景，背景虚化（Blurred background），有明确空间感。
-        -   **画面张力**：中。
-
-    -   **SSR (Specially Super Rare)**：
-        -   **视角**：**电影级动态视角**（Cinematic angle, Dynamic angle）。
-            -   *仰视（From below）*：强调长腿、压迫感或裙底风光。
-            -   *俯视（From above）*：强调乳沟、无辜感或被支配感。
-        -   **角色外观**：绝世美貌，倾国倾城级别，五官精致完美。
-        -   **装备与着装**：华丽的装备，使用高级材质（丝绸、精钢、宝石镶嵌），武器有魔法光效或元素附魔效果，服装设计感强，有披风、流苏等动态元素。
-        -   **姿势**：极具张力的战斗构图和姿势，装备破损仅限非暴露的战斗磨损。
-        -   **背景**：精细复杂的全景，强调环境叙事和电影级光照。
-        -   **画面张力**：高。
-
-    -   **UR (Ultra Rare)**：
-        -   **视角**：**极端透视与视觉冲击**（Extreme foreshortening, Fisheye, Wide angle）。肢体（如脚、手、胸部）极度靠近镜头，产生打破第四面墙的立体感。
-        -   **角色外观**：神颜级别，超越凡俗的绝美，如神祇或仙女下凡，散发圣洁或堕落的气质。
-        -   **装备与着装**：传说级华丽装备，极致奢华（金银丝线、发光符文、浮动的能量碎片、神圣/暗黑光环），武器有强烈的视觉特效（火焰、雷电、神圣光芒等），服装华丽完整，如神装、圣衣、魔王战袍。
-        -   **姿势**：视觉爆炸，构图和姿势更具张力，呈现"Live2D"般的瞬间定格。
-        -   **背景**：艺术化/超现实背景，神圣或堕落的领域感，背景与特效融为一体。
-        -   **画面张力**：**极高（Max Impact）**。
-
-4.  **属性与视觉呈现**：
-    -   将用户提供的属性（如火、冰、暗）转化为对应的主色调（Theme Color）和环境光效。
-
-5.  **种族特征系统 (Race Feature System)**：
-    *种族特征必须明确体现，且稀有度越高特征越突出、越精致*
-
-    **【重要】耳朵规则**：
-    - **只有精灵族和恶魔族**可以使用"pointed ears"、"elf ears"、"long ears"等尖耳描述
-    - **人类、神族、龙族、亡灵族**必须是**普通人类耳朵**，绝对禁止出现任何尖耳相关词汇
-
-    -   **人类 (Human)**：
-        -   标准人类外观，普通圆形耳朵，无特殊种族特征。
-        -   根据稀有度提升皮肤质感和细节精致度。
-
-    -   **恶魔 (Demon)**：
-        -   **必备特征**：恶魔角（demon horns）、恶魔竖瞳（vertical slit pupils, red irises）、尖锐犬牙（sharp fangs）、尖耳（pointed ears）。
-        -   **肤色**：深色系/暗色系（dark skin, grayish skin, ashen complexion）。
-        -   **R级**：5cm黑色弯曲小角，微露犬牙，红色瞳孔。
-        -   **SR级**：10cm螺旋恶魔角，外露獠牙，金红色竖瞳，小型蝙蝠翅膀。
-        -   **SSR级**：15cm大型弯曲角带金色纹路，獠牙明显，发光红瞳，完整蝙蝠翅膀，细长恶魔尾。
-        -   **UR级**：20cm皇冠状巨型恶魔角带火焰效果，全套恶魔翅膀和尾巴，全身暗红色能量纹路。
-
-    -   **精灵 (Elf)**：
-        -   **必备特征（所有稀有度都必须明显）**：精灵尖耳（long pointed elf ears, 10-15cm length）。
-        -   **肤色**：白皙肤色。
-        -   **R级**：10cm尖耳，绿色/蓝色虹膜，光滑皮肤。
-        -   **SR级**：12cm尖耳带银色耳环，翠绿色虹膜，金色或银色长发。
-        -   **SSR级**：15cm修长尖耳带精致耳饰，发光的绿色虹膜，头发缠绕藤蔓或花朵。
-        -   **UR级**：15cm以上华丽尖耳配宝石耳饰，虹膜带有光晕，全身环绕发光的自然元素粒子。
-
-    -   **神族 (Divine/Celestial)**：
-        -   **必备特征**：瓷白无瑕皮肤（porcelain white skin）、发光瞳孔（glowing golden/white irises）、普通人类耳朵。
-        -   **R级**：白皙肌肤，淡金色发光虹膜。
-        -   **SR级**：瓷白肌肤，明亮发光瞳孔，头顶小型光环。
-        -   **SSR级**：完美无瑕白皙皮肤，强烈发光的金色瞳孔，背后一对白色羽翼，头顶光环。
-        -   **UR级**：全身散发柔和白光，巨大多层羽翼，瞳孔如小太阳般发光，背后巨型发光法阵。
-
-    -   **龙族 (Dragon/Dragonkin)**：
-        -   **必备特征**：龙角（curved dragon horns）、龙尾（scaled dragon tail）、竖瞳（vertical slit pupils）、普通人类耳朵。
-        -   **R级**：8cm小型弯曲龙角，60cm细长龙尾，金色竖瞳。
-        -   **SR级**：12cm龙角带鳞片纹理，80cm龙尾，发光橙色竖瞳，手臂有少量鳞片。
-        -   **SSR级**：18cm大型弯曲龙角，100cm粗壮龙尾带尾刃，燃烧效果的红色竖瞳，四肢覆盖鳞片，背后一对龙翼。
-        -   **UR级**：25cm皇者级巨型龙角，150cm龙尾带火焰效果，完整龙翼展开，全身若隐若现金色鳞片，瞳孔散发压迫感光芒。
-
-    -   **亡灵 (Undead)**：
-        -   **必备特征**：苍白无血色皮肤（pale gray skin, bloodless complexion）、无神白色瞳孔（white empty pupils, lifeless gaze）、部分骨骼外露（exposed bones）、普通人类耳朵。
-        -   **R级**：灰白色皮肤，空洞的白色眼睛，手指关节骨骼外露。
-        -   **SR级**：死灰色皮肤带青紫血管纹路，完全白色瞳孔，手臂和锁骨处骨骼外露，皮肤有缝合痕迹。
-        -   **SSR级**：半透明灰白皮肤，眼眶有蓝色灵魂火焰，大面积骨骼外露（肋骨、脊椎可见），全身环绕幽灵雾气。
-        -   **UR级**：皮肤与骨骼完美融合的死亡美学，眼眶燃烧强烈灵魂之火，全身缠绕幽冥锁链，头戴骨质王冠，背后巨型骷髅虚影。
-
-## Prompt Structure Strategy (提示词构建策略)
-生成的英文提示词需遵循以下顺序（**禁止使用quality标签**）：
-1.  **Camera & Perspective**: ([Rarity based Angle tags: foreshortening/fisheye/from below], [Focus tags])
-2.  **Character & Body**: (1girl, solo, [Race features - 具体尺寸和颜色], [Age/Body type tags], [Skin texture])
-3.  **Outfit & Job**: ([Job uniform], [Clothing details], [Rarity based equipment details])
-4.  **Legwear & Footwear**: ([若符合腿部装饰触发条件，必须添加：stockings/thighhighs/garter belt/high heels等])
-5.  **Pose & Expression**: ([Seductive pose], [Expression])
-6.  **Attribute & VFX**: ([Elemental effects], [Magic spells], [Color theme])
-7.  **Background**: ([Background description matched with Rarity logic])
-
-## Workflow
-1.  **分析输入**：解析用户的游戏风格、角色性别、年龄段、职业、种族、属性、稀有度、人物札记。
-2.  **逻辑映射**：
-    -   根据**职业**确定：角色穿着和武器以及一些该职业必备的物件或坐骑：
-        - 战士类(初级战士/战士/狂战士/冠军勇士)：武器是巨斧或双斧
-        - 剑士类(见习剑士/剑士/剑圣)：武器是轻型单手长剑或双手轻型剑
-        - 弓箭手类(见习弓手/弓箭手/狙击手/神射手)：武器是弓，**必须添加腿部装饰**
-        - 佣兵类(见习佣兵/佣兵/勇者)：武器是巨剑
-        - 盗贼类(初级盗贼/盗贼/刺客/抹杀使徒)：武器是短剑或拳刃，**必须添加腿部装饰**
-        - 武者类(初级斗士/斗士/决斗士)：徒手或拳套，用斗气战斗
-        - 骑士类(见习骑士/骑士/圣骑士)：武器是剑或枪，必须有马
-        - 天马骑士类(见习天马骑士/天马骑士/独角兽骑士)：武器是剑或枪，必须有天马（飞行）
-        - 弓骑兵类(见习弓骑兵/弓骑兵/游侠将军)：武器是弓，必须有马
-        - 重甲兵类(初级守卫/重甲兵/巨盾守卫/铠将军)：武器是剑或枪，必须有巨盾
-        - 术士类(见习术士/术士/巫术大师)：使用魔法杖引导暗魔法，**必须添加腿部装饰**
-        - 召唤师类(初级召唤师/召唤师/通灵大师)：必须有召唤兽或魔法生物，**必须添加腿部装饰**
-        - 圣职类(修道士/牧师/神官)：武器是权杖，引导光魔法，**必须添加腿部装饰**
-        - 魔导士类(见习魔导士/魔导士/贤者/大贤者)：武器是魔法书，引导元素魔法，**必须添加腿部装饰**
-        - 魔术师类(初级魔术师/魔术师/咒术大师)：身上必须有魔法纹身或刻印，**必须添加腿部装饰**
-    -   根据**稀有度**确定：镜头视角、穿着物件和道具的视觉精致度（关键）、背景复杂度、特效强度、**腿部装饰的华丽程度**。
-    -   根据**种族**确定：必须严格按照"种族特征系统"添加对应的种族外观特征，使用**具体的尺寸、颜色、数量**描述（如"15cm curved dragon horns"而非"大型龙角"）。
-    -   根据**年龄**确定：体型、表情和服装成熟度。年轻角色必须保持全年龄冒险者表现。
-3.  **生成提示词**：编写一段连贯的英文Prompt，**种族特征关键词必须出现在提示词中**。
-4.  **输出结果**：只输出英文提示词，不要任何解释性文字。
-
-## 输出格式要求（必须严格遵守）
-1.  **客观具象描述**：所有描述必须是客观、可视化的具体特征（如颜色、尺寸、形状、材质），严禁使用比喻、情感化修辞（如"如星辰般闪耀"、"散发威压"、"美如画卷"等）。
-2.  **禁止源标签**：绝对不能包含"8K"、"masterpiece"、"best quality"、"highres"、"illustration"、"unity 8k wallpaper"、"extremely detailed"等质量标签或绘制指令。
-3.  **禁止尖耳滥用**：只有精灵族和恶魔族可以使用"pointed ears"、"elf ears"等尖耳描述，其他种族必须是普通人类耳朵或不提及耳朵。
-4.  **画面无文字**：画面中绝对不能出现任何文字、字母、符号。
-5.  **纯英文输出**：只输出英文提示词，不包含任何中文或解释性文字。
-
-## 腿部装备规则 (Leg Armor & Footwear System)
-**【重要】以下条件满足任意一条时，必须在提示词中加入合适的腿部装备元素**：
-
-**触发条件（满足任意一条）**：
-1. **法系职业**：术士、巫术大师、召唤师、通灵大师、圣职（修道士/牧师/神官）、魔导士、贤者、大贤者、魔术师、咒术大师
-2. **敏捷系职业**：盗贼、刺客、抹杀使徒、弓箭手、狙击手、神射手
-3. **战斗角色**：需要符合职业动作的靴子、护膝或腿甲
-
-**腿部装饰关键词选择（根据角色风格和稀有度选择）**：
--   **护具类**：leather greaves, steel knee guards, armored boots, cloth wraps, riding boots, mage boots, ranger gaiters
--   **鞋靴类**：combat boots, riding boots, reinforced boots, elegant mage boots
--   **职业细节**：belt pouches, knee armor, engraved shin guards, rune patterns on boots
-
-**稀有度与腿部装饰华丽度对应**：
--   **R级**：简单皮靴或布料绑腿
--   **SR级**：带纹路的战斗靴或轻型护膝
--   **SSR级**：华丽腿甲、符文靴或职业化护具
--   **UR级**：传说级腿甲、宝石嵌饰护具、发光符文或元素特效
-
-**风格适配**：
--   法系职业优先使用：mage boots, rune patterns, mystical leg accessories
--   敏捷系职业优先使用：light greaves, ranger gaiters, flexible combat boots
--   骑乘职业优先使用：riding boots, reinforced knee guards, saddle-ready leg armor`;
+    const characterInfoForPrompt = buildImagePromptUserInput(generatedInfo);
 
     try {
       if (!capabilities.openRouter) {
-        console.warn("[ImagePrompt] 未配置 OpenRouter API Key，使用本地立绘提示词");
+        logger.warn("[ImagePrompt] 未配置 OpenRouter API Key，使用本地立绘提示词");
         imagePrompt = buildLocalImagePrompt(generatedInfo);
       } else {
-      console.log("[ImagePrompt] Starting image prompt generation...");
+      logger.info("[ImagePrompt] 开始生成立绘提示词");
       const openRouterData = await proxyOpenRouterChat(apiKeys.openRouter, {
         "model": openRouterModel,
         "messages": [
-          { "role": "system", "content": illustratorSystemPrompt },
+          { "role": "system", "content": ILLUSTRATOR_SYSTEM_PROMPT },
           { "role": "user", "content": characterInfoForPrompt }
         ],
         "max_tokens": 10000,
@@ -587,34 +304,34 @@ export default function App() {
       // 清理提示词：移除可能的 markdown 代码块标记
       imagePrompt = imagePrompt.replace(/```[\s\S]*?```/g, '').replace(/`/g, '').trim();
 
-      console.log("[ImagePrompt] Generated Image Prompt:", imagePrompt);
+      logger.debug("[ImagePrompt] 立绘提示词生成成功", imagePrompt);
       }
 
     } catch (e: any) {
-      console.warn("[ImagePrompt] API failed:", e);
+      logger.warn("[ImagePrompt] API failed:", e);
 
-      if (e.name === 'TimeoutError') {
+      if (e instanceof ApiClientError && e.code === 'REQUEST_TIMEOUT') {
         // 超时：提示并自动返回缔结契约界面
         setLoadingText("立绘提示词生成超时，正在返回...");
         await new Promise(resolve => setTimeout(resolve, 1500));
         setGameState(GameState.CONTRACT_PENDING);
         return;
-      } else if (e.name === 'ApiError') {
+      } else if (e instanceof ApiClientError) {
         // API错误：弹框显示错误详情
         setApiErrorModal({
           show: true,
-          message: `立绘提示词生成失败\n\n错误详情：${e.details || e.message}`
+          message: `立绘提示词生成失败\n\n错误详情：${e.message}`
         });
         return;
       } else {
         // 其他错误：使用备用提示词
-        console.warn("[ImagePrompt] Using fallback prompt");
-        imagePrompt = `best quality, masterpiece, 8k, highres, illustration, 1girl, solo, ${generatedInfo.race}, ${generatedInfo.profession}, ${generatedInfo.attribute} element effects, fantasy game character, detailed outfit`;
+        logger.warn("[ImagePrompt] 使用本地备用提示词");
+        imagePrompt = buildEmergencyImagePrompt(generatedInfo);
       }
     }
 
     if (!imagePrompt) {
-      imagePrompt = `best quality, masterpiece, 8k, highres, illustration, 1girl, solo, fantasy character`;
+      imagePrompt = buildEmergencyImagePrompt(generatedInfo);
     }
 
     const finalizeCharacter = async (info: CharacterInfo) => {
@@ -627,20 +344,20 @@ export default function App() {
         setCharInfo(info);
 
         if (voiceGenerationPromise) {
-            console.log('[Voice] 等待语音生成完成...');
+            logger.info('[Voice] 等待语音生成完成');
             const voiceResult = await voiceGenerationPromise;
 
             if (voiceResult?.success && voiceResult?.data) {
-                console.log('[Voice] 语音生成成功！');
+                logger.info('[Voice] 语音生成成功');
                 setCharInfo({ ...info, voices: voiceResult.data });
             } else {
-                console.warn('[Voice] 语音生成失败:', voiceResult?.error);
+                logger.warn('[Voice] 语音生成失败', voiceResult?.error);
             }
         }
     };
 
     if (!capabilities.runningHub) {
-        console.warn('[RunningHub] 未配置 RunningHub API Key，跳过立绘生成');
+        logger.warn('[RunningHub] 未配置 RunningHub API Key，跳过立绘生成');
         stopProgressAnimation();
         setLoadingText('未配置立绘服务，展示文字契约...');
         await new Promise(r => setTimeout(r, 800));
@@ -649,39 +366,6 @@ export default function App() {
     }
 
     // 3. Image Generation (RunningHub) - 使用新的工作流
-    // Helper to find URL recursively in the response structure
-    const findImage = (obj: any): string | null => {
-        if (!obj) return null;
-        if (typeof obj === 'string') {
-            if (obj.startsWith('http')) {
-                if (/\.(jpeg|jpg|png|webp|gif|bmp)(\?.*)?$/i.test(obj)) return obj;
-            }
-            return null;
-        }
-        if (typeof obj === 'object') {
-            const keysToCheck = ['fileUrl', 'imgUrl', 'imageUrl', 'url', 'image', 'outputUrl'];
-            for (const key of keysToCheck) {
-                if (obj[key] && typeof obj[key] === 'string' && obj[key].startsWith('http')) {
-                    return obj[key];
-                }
-            }
-            if (Array.isArray(obj)) {
-                for (const item of obj) {
-                    const found = findImage(item);
-                    if (found) return found;
-                }
-            } else {
-                for (const key in obj) {
-                    if (typeof obj[key] === 'object' || Array.isArray(obj[key])) {
-                        const found = findImage(obj[key]);
-                        if (found) return found;
-                    }
-                }
-            }
-        }
-        return null;
-    };
-
     // 单次图片生成尝试
     const attemptImageGeneration = async (): Promise<string> => {
         setLoadingText("灵魂连接中...");
@@ -699,135 +383,53 @@ export default function App() {
             throw new Error(`RunningHub API error: ${executeData.msg || 'Unknown error'}`);
         }
 
-        console.log("RH Execute Data:", executeData);
+        logger.debug("[RunningHub] 静态立绘任务提交成功", executeData);
 
         // --- Step B: Determine Task ID or Direct Result ---
         let imageUrl = "";
-        let taskId = "";
+        let taskId = extractRunningHubTaskId(executeData) || "";
 
-        const directImage = findImage(executeData.data);
+        const directImage = extractRunningHubImageUrl(executeData);
         if (directImage) {
             imageUrl = directImage;
-        } else if (executeData.data && executeData.data.taskId) {
-            taskId = executeData.data.taskId;
-        } else if (typeof executeData.data === 'string' && executeData.data.length > 5) {
-            taskId = executeData.data;
         }
 
         // --- Step C: Poll for Result if Task ID exists ---
         if (taskId && !imageUrl) {
-            console.log("Polling for Task ID:", taskId);
+            logger.info("[RunningHub] 开始轮询静态立绘任务");
             setLoadingText("正在召唤...");
 
             let attempts = 0;
             const maxAttempts = 200;
 
-            // 检测失败状态的辅助函数
-            const isFailureStatus = (status: string): boolean => {
-                const failureStatuses = [
-                    'FAILURE', 'FAILED', 'ERROR', 'CANCELLED', 'CANCELED',
-                    'TIMEOUT', 'REJECTED', 'ABORTED', 'EXCEPTION'
-                ];
-                return failureStatuses.includes(status);
-            };
-
-            // 检测失败信息的辅助函数（包括安审失败等）
-            const checkForFailure = (data: any): string | null => {
-                // 检查常见的错误信息字段
-                const errorFields = ['errorMsg', 'error', 'message', 'msg', 'reason', 'failReason'];
-                for (const field of errorFields) {
-                    if (data[field] && typeof data[field] === 'string') {
-                        const msg = data[field].toLowerCase();
-                        // 检测安审失败、内容审核失败等关键词
-                        if (msg.includes('安审') || msg.includes('审核') || msg.includes('违规') ||
-                            msg.includes('敏感') || msg.includes('forbidden') || msg.includes('blocked') ||
-                            msg.includes('rejected') || msg.includes('censored') || msg.includes('nsfw') ||
-                            msg.includes('inappropriate') || msg.includes('policy') || msg.includes('moderation')) {
-                            return data[field];
-                        }
-                        // 检测一般性失败
-                        if (msg.includes('fail') || msg.includes('error') || msg.includes('失败')) {
-                            return data[field];
-                        }
-                    }
-                }
-                // 检查嵌套的 output 数组中的错误
-                if (data.output && Array.isArray(data.output)) {
-                    for (const item of data.output) {
-                        if (item && typeof item === 'object') {
-                            const nestedError = checkForFailure(item);
-                            if (nestedError) return nestedError;
-                        }
-                    }
-                }
-                return null;
-            };
-
             while (!imageUrl && attempts < maxAttempts) {
                 try {
                     const queryData = await proxyRunningHubOutputs(apiKeys.runningHub, taskId);
-                    console.log(`[Poll ${attempts}] Response:`, JSON.stringify(queryData).substring(0, 500));
+                    if (attempts % 10 === 0) {
+                        logger.debug(`[RunningHub] 静态立绘轮询第 ${attempts + 1} 次`, queryData);
+                    }
 
                     // code 804 = APIKEY_TASK_IS_RUNNING，任务正在运行中，继续轮询
-                    if (queryData.code === 804 && queryData.msg === 'APIKEY_TASK_IS_RUNNING') {
+                    if (isRunningHubTaskRunning(queryData)) {
                         // 正常状态，继续等待
                         await new Promise(resolve => setTimeout(resolve, 2000));
                         attempts++;
                         continue;
                     }
 
-                    // 检查特殊错误码：805 = APIKEY_TASK_STATUS_ERROR（可能是安审失败）
-                    if (queryData.code === 805 && queryData.msg === 'APIKEY_TASK_STATUS_ERROR') {
-                        const data = queryData.data || {};
-                        const exceptionMsg = data.exception_message || '';
-
-                        console.warn(`[Poll] APIKEY_TASK_STATUS_ERROR detected, exception_message:`, exceptionMsg);
-
-                        // 只有当 exception_message 包含 "Porn" 等安审关键词时才判定为失败
-                        if (exceptionMsg.toLowerCase().includes('porn') ||
-                            exceptionMsg.includes('色情') ||
-                            exceptionMsg.includes('违规') ||
-                            exceptionMsg.includes('nsfw')) {
-                            throw new Error(`安审失败: ${exceptionMsg}`);
-                        }
-
-                        // 其他 805 错误也视为失败
-                        throw new Error(`任务状态错误: ${exceptionMsg || '未知错误'}`);
-                    }
+                    const failureMessage = getRunningHubFailureMessage(queryData);
+                    if (failureMessage) throw new Error(`任务状态错误: ${failureMessage}`);
 
                     if (queryData.code === 0 && queryData.data) {
-                        const statusRaw = queryData.data.status || queryData.data.taskStatus;
-                        const status = statusRaw ? String(statusRaw).toUpperCase() : '';
-
-                        // 只检查 exception_message 字段中的安审关键词
-                        const exceptionMsg = queryData.data.exception_message || '';
-                        if (exceptionMsg && (
-                            exceptionMsg.toLowerCase().includes('porn') ||
-                            exceptionMsg.includes('色情') ||
-                            exceptionMsg.includes('违规'))) {
-                            console.warn(`[Poll] 安审失败:`, exceptionMsg);
-                            throw new Error(`安审失败: ${exceptionMsg}`);
-                        }
-
-                        // 检查是否有失败状态
-                        if (isFailureStatus(status)) {
-                            const errorMsg = queryData.data.errorMsg || queryData.data.error || queryData.msg || 'Unknown error';
-                            console.warn(`[Poll] Task failed with status: ${status}, error: ${errorMsg}`);
-                            throw new Error(`Generation Failed (${status}): ${errorMsg}`);
-                        }
-
                         // 尝试查找图片
-                        const foundImg = findImage(queryData.data);
+                        const foundImg = extractRunningHubImageUrl(queryData);
                         if (foundImg) {
                             imageUrl = foundImg;
                             break;
                         }
 
-                        if (status === 'SUCCESS' || status === 'COMPLETED' || status === 'SUCCEED') {
-                            if (!imageUrl && queryData.data.output && Array.isArray(queryData.data.output)) {
-                                const outUrl = queryData.data.output[0]?.fileUrl;
-                                if (outUrl) imageUrl = outUrl;
-                            }
+                        if (isRunningHubSuccessStatus(queryData) && !imageUrl) {
+                            logger.debug("[RunningHub] 任务已成功但暂未解析到图片 URL，继续等待");
                         }
                     }
                 } catch (queryError: any) {
@@ -835,7 +437,7 @@ export default function App() {
                     if (message.includes('安审失败') || message.includes('任务状态错误') || message.includes('Generation Failed')) {
                         throw queryError;
                     }
-                    console.warn(`[Poll ${attempts}] 查询失败:`, queryError);
+                    logger.warn(`[RunningHub] 静态立绘轮询第 ${attempts + 1} 次失败`, queryError);
                 }
 
                 if (imageUrl) break;
@@ -856,7 +458,7 @@ export default function App() {
     if (queueStatus.isProcessing || queueStatus.queueLength > 0) {
         const waitCount = queueStatus.queueLength + (queueStatus.isProcessing ? 1 : 0);
         setLoadingText(`契约编撰中...前方${waitCount}个灵魂`);
-        console.log(`[Static] Waiting in queue. Position: ${queueStatus.queueLength + 1}`);
+        logger.debug(`[Static] 静态立绘任务等待队列，位置 ${queueStatus.queueLength + 1}`);
     }
 
     const staticQueueId = `static-${generatedInfo.name}-${Date.now()}`;
@@ -886,7 +488,7 @@ export default function App() {
 
     } catch (e: any) {
         stopProgressAnimation();
-        console.warn("Image Gen Error:", e);
+        logger.warn("Image Gen Error:", e);
 
         // 增加连续失败计数
         setConsecutiveFailures(prev => prev + 1);
@@ -1048,12 +650,12 @@ export default function App() {
   if (gameState === GameState.ROLLING) {
       mainButtonText = "命运流转...";
       isButtonDisabled = true;
-      buttonStyleClass += " bg-slate-300 text-slate-500 border-slate-400 cursor-not-allowed";
+      buttonStyleClass += " bg-slate-700/85 text-slate-300 border-slate-900 cursor-not-allowed";
   } else if (gameState === GameState.REWARD_CHOICE) {
       // 在奖励选择状态下，主按钮被隐藏（通过下面的条件渲染）
       mainButtonText = "请选择...";
       isButtonDisabled = true;
-      buttonStyleClass += " bg-slate-300 text-slate-500 border-slate-400 cursor-not-allowed";
+      buttonStyleClass += " bg-slate-700/85 text-slate-300 border-slate-900 cursor-not-allowed";
   } else if (gameState === GameState.CONTRACT_PENDING) {
       mainButtonText = "缔结契约";
       mainButtonAction = handleMakeContract;
@@ -1078,15 +680,15 @@ export default function App() {
   } else if (gameState === GameState.AI_GENERATING) {
       mainButtonText = "契约缔结中...";
       isButtonDisabled = true;
-      buttonStyleClass += " bg-slate-300 text-slate-500 border-slate-400 cursor-not-allowed";
+      buttonStyleClass += " bg-slate-700/85 text-slate-300 border-slate-900 cursor-not-allowed";
   } else if (gameState === GameState.SHOW_CARD || gameState === GameState.RESULT) {
       // In Card mode, button is hidden or just allows reset
       mainButtonText = "重新召唤";
       mainButtonAction = handleReset;
-      buttonStyleClass += " bg-gradient-to-b from-indigo-500 to-indigo-700 border-indigo-900 hover:brightness-110 text-white";
+      buttonStyleClass += " bg-gradient-to-b from-[#2f5b9a] via-[#183a73] to-[#0b1a39] border-[#061022] hover:brightness-110 text-amber-50 arcane-focus-ring";
   } else {
       // IDLE
-      buttonStyleClass += " bg-gradient-to-b from-indigo-500 to-indigo-700 border-indigo-900 hover:brightness-110 text-white";
+      buttonStyleClass += " bg-gradient-to-b from-[#2f5b9a] via-[#183a73] to-[#0b1a39] border-[#061022] hover:brightness-110 text-amber-50 arcane-focus-ring";
   }
 
   // Animation State Control
@@ -1098,8 +700,16 @@ export default function App() {
       }
   }, [gameState]);
 
+  const missingCapabilityLabels = [
+      !capabilities.openRouter && '文案',
+      !capabilities.runningHub && '立绘/动态',
+      !capabilities.miniMax && '语音'
+  ].filter(Boolean).join('、');
+  const isOverflowAuraRarity = (rarity?: string) => rarity === 'SSR' || rarity === 'UR';
+  const isRewardChoice = gameState === GameState.REWARD_CHOICE;
+
   return (
-    <div className="relative w-full h-screen overflow-hidden bg-slate-100 text-slate-800 font-sans select-none">
+    <div className="relative w-full h-screen overflow-hidden bg-[#07101f] bg-[url('/ui/academy-hall.png')] bg-cover bg-center text-amber-50 font-sans select-none">
        <style>{`
         @keyframes shine {
           0% { transform: translateX(-150%) skewX(-20deg); }
@@ -1119,9 +729,41 @@ export default function App() {
         .delay-200 { animation-delay: 200ms; }
         .delay-300 { animation-delay: 300ms; }
         .delay-500 { animation-delay: 500ms; }
+
+        .academy-glass {
+          background:
+            linear-gradient(135deg, rgba(13, 27, 54, 0.9), rgba(9, 14, 27, 0.82)),
+            url('/ui/arcane-metal-ui.png');
+          background-size: cover;
+          border: 1px solid rgba(245, 213, 139, 0.36);
+          box-shadow: 0 18px 55px rgba(0, 0, 0, 0.42), inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+        }
+
+        .academy-parchment {
+          background:
+            linear-gradient(180deg, rgba(255, 247, 220, 0.92), rgba(226, 185, 112, 0.84)),
+            url('/ui/parchment-panel.png');
+          background-size: cover;
+          border: 1px solid rgba(245, 213, 139, 0.55);
+          color: #2b1a10;
+          box-shadow: 0 18px 55px rgba(0, 0, 0, 0.42), inset 0 0 0 1px rgba(255, 255, 255, 0.28);
+        }
+
+        .summon-altar {
+          background:
+            radial-gradient(circle at 50% 0%, rgba(96, 165, 250, 0.24), transparent 44%),
+            radial-gradient(circle at 50% 100%, rgba(245, 213, 139, 0.12), transparent 52%),
+            linear-gradient(135deg, rgba(11, 22, 48, 0.92), rgba(13, 9, 24, 0.88));
+          border: 1px solid rgba(245, 213, 139, 0.36);
+          box-shadow: 0 18px 56px rgba(0, 0, 0, 0.48), inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+        }
+
+        .arcane-focus-ring {
+          box-shadow: 0 0 0 1px rgba(245, 213, 139, 0.35), 0 0 24px rgba(37, 99, 235, 0.22);
+        }
       `}</style>
 
-       {/* 3D Dice Scene */}
+       {/* 3D 骰盘场景 */}
       <DiceCanvas 
         ref={diceRef} 
         onRollComplete={handleRollComplete} 
@@ -1135,59 +777,62 @@ export default function App() {
         onAssetsLoaded={() => setTimeout(() => setLoading(false), 800)} 
       />
 
-      {/* Top Left Menu (Hidden during card show) */}
+      <div className="absolute inset-0 z-[1] pointer-events-none bg-[radial-gradient(circle_at_50%_42%,rgba(9,20,42,0.02),rgba(5,9,20,0.28)_78%),linear-gradient(180deg,rgba(3,7,18,0.08),rgba(3,7,18,0.2))]" />
+
+      {/* 左上工具区，角色卡展示时隐藏 */}
       {gameState !== GameState.SHOW_CARD && (
-        <div className={`absolute top-6 left-6 z-40 flex items-center gap-3 transition-all duration-500 ${peekMode ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
-            <div className="bg-white/80 backdrop-blur-xl border border-white/50 p-4 rounded-2xl flex items-center gap-4 shadow-xl">
+        <div className={`absolute top-3 left-3 right-3 md:top-6 md:left-6 md:right-auto z-40 flex flex-wrap items-start gap-2 md:gap-3 transition-all duration-500 ${peekMode ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+            <div className="academy-glass backdrop-blur-xl p-3 md:p-4 rounded-xl md:rounded-2xl flex items-center gap-3 md:gap-4 max-w-full">
             <button 
                 onClick={() => setIsStyleOpen(!isStyleOpen)}
-                className={`p-2.5 rounded-xl transition-all ${isStyleOpen ? 'bg-indigo-600 text-white shadow-lg scale-110' : 'bg-indigo-50 text-indigo-500 hover:bg-indigo-100'}`}
+                className={`w-10 h-10 md:w-11 md:h-11 rounded-xl transition-all flex items-center justify-center shrink-0 border ${isStyleOpen ? 'bg-amber-500 text-slate-950 border-amber-200 shadow-lg scale-105' : 'bg-blue-950/55 text-amber-100 border-amber-200/25 hover:bg-blue-900/70'}`}
                 title="风格设置"
             >
-                <Dices size={24} />
+                <Dices size={22} />
             </button>
             <button
                 onClick={() => setIsApiSettingsOpen(true)}
-                className={`p-2.5 rounded-xl transition-all ${capabilities.openRouter && capabilities.runningHub && capabilities.miniMax ? 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100' : 'bg-amber-50 text-amber-600 hover:bg-amber-100'}`}
-                title="API 设置"
+                className={`w-10 h-10 md:w-11 md:h-11 rounded-xl transition-all flex items-center justify-center shrink-0 border ${capabilities.openRouter && capabilities.runningHub && capabilities.miniMax ? 'bg-emerald-500/18 text-emerald-200 border-emerald-200/35 hover:bg-emerald-500/28' : 'bg-amber-500/18 text-amber-200 border-amber-200/35 hover:bg-amber-500/28'}`}
+                title={missingCapabilityLabels ? `API 设置，缺少：${missingCapabilityLabels}` : 'API 设置'}
             >
                 <KeyRound size={22} />
             </button>
             <div 
-                className="flex flex-col pr-2 cursor-pointer select-none group"
+                className="flex flex-col min-w-0 pr-1 md:pr-2 cursor-pointer select-none group"
                 onClick={() => setIsStyleOpen(!isStyleOpen)}
             >
-                <h1 className="text-xl font-black font-serif tracking-widest leading-tight text-slate-900 group-hover:text-indigo-900 transition-colors">骰子传说</h1>
-                <div className="text-[10px] text-indigo-500 font-bold uppercase tracking-[0.2em]">Crest Summoner</div>
+                <h1 className="text-lg md:text-xl font-black font-serif tracking-widest leading-tight text-amber-100 group-hover:text-white transition-colors whitespace-nowrap drop-shadow">骰子传说</h1>
+                <div className="text-[9px] md:text-[10px] text-blue-200/80 font-black uppercase tracking-[0.18em] md:tracking-[0.2em] whitespace-nowrap">Arcane Codex</div>
             </div>
             </div>
 
             <div className={`transition-all duration-500 origin-left overflow-hidden ${isStyleOpen ? 'max-w-xs opacity-100 ml-2' : 'max-w-0 opacity-0 ml-0 pointer-events-none'}`}>
-            <div className="bg-white/80 backdrop-blur-xl border border-white/50 p-4 rounded-2xl shadow-xl flex items-center gap-3 whitespace-nowrap">
-                <MessageSquareQuote size={18} className="text-indigo-500 flex-shrink-0" />
+            <div className="academy-glass backdrop-blur-xl p-3 md:p-4 rounded-xl md:rounded-2xl flex items-center gap-3 whitespace-nowrap">
+                <MessageSquareQuote size={18} className="text-amber-200 flex-shrink-0" />
                 <input 
                 value={stylePrompt}
                 onChange={(e) => setStylePrompt(e.target.value)}
                 placeholder="输入游戏风格关键词..."
-                className="bg-transparent border-b border-slate-300 text-sm text-slate-800 focus:outline-none focus:border-indigo-500 w-44 px-1 placeholder-slate-400"
+                className="bg-transparent border-b border-amber-200/35 text-sm text-amber-50 focus:outline-none focus:border-amber-200 w-40 sm:w-52 px-1 placeholder-amber-100/45"
                 />
             </div>
             </div>
         </div>
       )}
 
-      {/* Peek Toggle */}
+      {/* 界面隐藏切换 */}
       {gameState !== GameState.SHOW_CARD && (
         <button
             onClick={() => setPeekMode(!peekMode)}
-            className={`absolute bottom-8 right-8 z-50 w-16 h-16 rounded-2xl flex items-center justify-center transition-all duration-300 shadow-lg ${peekMode ? 'bg-indigo-600 text-white shadow-indigo-500/50 scale-110' : 'bg-white/80 backdrop-blur-md border border-white/40 text-slate-500 hover:text-indigo-600 hover:bg-white'}`}
+            className={`absolute bottom-4 right-4 md:bottom-8 md:right-8 z-50 w-12 h-12 md:w-16 md:h-16 rounded-xl md:rounded-2xl flex items-center justify-center transition-all duration-300 shadow-lg border ${peekMode ? 'bg-amber-500 text-slate-950 border-amber-200 shadow-amber-500/30 scale-105' : 'bg-blue-950/75 backdrop-blur-md border-amber-200/35 text-amber-100 hover:text-white hover:bg-blue-900/90'}`}
+            title={peekMode ? '显示界面' : '隐藏界面'}
         >
-            <Eye size={28} />
+            <Eye size={24} />
         </button>
       )}
 
-      {/* Info Panel (Old Overview - Hidden in SHOW_CARD) */}
-      <div className={`absolute top-8 right-8 z-20 w-80 md:w-96 flex flex-col gap-6 transition-all duration-500 ${peekMode || gameState === GameState.SHOW_CARD ? 'translate-x-[120%] opacity-0 pointer-events-none' : 'translate-x-0 opacity-100'}`}>
+      {/* 结果信息面板，角色卡展示时隐藏 */}
+      <div className={`absolute top-24 left-3 right-3 md:top-8 md:left-auto md:right-5 lg:right-8 z-20 w-auto md:w-[22rem] xl:w-96 max-h-[calc(100vh-16rem)] md:max-h-[calc(100vh-15rem)] overflow-y-auto overscroll-contain flex flex-col gap-6 transition-all duration-500 ${peekMode || gameState === GameState.SHOW_CARD ? 'translate-x-[120%] opacity-0 pointer-events-none' : 'translate-x-0 opacity-100'}`}>
         <ResultPanel result={result} visible={!!result} />
       </div>
 
@@ -1206,10 +851,11 @@ export default function App() {
           </>
       )}
 
-      {/* Bottom Area (Controls) - Hidden when Card is shown */}
-      <div className={`absolute bottom-8 left-1/2 -translate-x-1/2 z-20 w-full max-w-4xl px-4 flex flex-col items-center gap-6 transition-all duration-500 ${peekMode || gameState === GameState.SHOW_CARD ? 'translate-y-[150%] opacity-0 pointer-events-none' : 'translate-y-0 opacity-100'}`}>
-        <div className="w-full flex justify-center gap-8 items-end">
-            <div className="hidden lg:block">
+      {/* 底部主控区，角色卡展示时隐藏 */}
+      <div className={`absolute bottom-3 md:bottom-4 left-1/2 -translate-x-1/2 z-20 w-full ${isRewardChoice ? 'max-w-[27rem]' : 'max-w-[44rem] lg:max-w-[52rem]'} px-3 flex flex-col items-center gap-3 transition-all duration-500 ${peekMode || gameState === GameState.SHOW_CARD ? 'translate-y-[150%] opacity-0 pointer-events-none' : 'translate-y-0 opacity-100'}`}>
+        <div className={`w-full flex flex-col ${isRewardChoice ? '' : 'md:flex-row'} justify-center gap-3 md:gap-4 items-center md:items-end rounded-2xl p-2.5 md:p-3 summon-altar backdrop-blur-md`}>
+            {!isRewardChoice && (
+            <div className="hidden md:block shrink-0">
                 <InventoryBar
                     inventory={inventory}
                     activeFixedCount={fixedDiceIndices.length}
@@ -1217,13 +863,26 @@ export default function App() {
                     onCancelWeightedDice={handleCancelWeightedDice}
                 />
             </div>
+            )}
 
-            <div className="flex flex-col gap-4 w-72 md:w-96">
+            <div className={`flex flex-col gap-2.5 md:gap-3 w-full ${isRewardChoice ? 'max-w-[24rem]' : 'max-w-[23rem] md:max-w-[22rem] lg:max-w-96'}`}>
+                {!isRewardChoice && (
+                <div className="md:hidden flex justify-center">
+                    <InventoryBar
+                        inventory={inventory}
+                        activeFixedCount={fixedDiceIndices.length}
+                        activeWeightedCount={weightedDiceIndices.length}
+                        onCancelWeightedDice={handleCancelWeightedDice}
+                    />
+                </div>
+                )}
+
                 {/* 奖励选择界面 - 仅在 REWARD_CHOICE 状态显示 */}
                 {gameState === GameState.REWARD_CHOICE && result && (() => {
                     // 根据稀有度设置缔结契约按钮样式
                     const rarity = result.rarity;
-                    let contractButtonClass = "w-full relative overflow-hidden text-white font-black py-4 px-6 rounded-xl border-b-4 active:border-b-0 active:translate-y-1 transition-all shadow-lg ";
+                    const overflowAura = isOverflowAuraRarity(rarity);
+                    let contractButtonClass = "w-full relative isolate overflow-hidden text-white font-black py-4 px-6 rounded-xl border-b-4 active:border-b-0 active:translate-y-1 transition-all shadow-lg ";
                     let shineClass = "";
 
                     if (rarity === 'UR') {
@@ -1241,15 +900,15 @@ export default function App() {
                     }
 
                     return (
-                        <div className="relative w-full bg-white/90 backdrop-blur-xl border-2 border-amber-400 rounded-2xl p-6 shadow-2xl animate-fade-in">
-                            <div className="text-center mb-4">
-                                <h3 className="text-xl font-black text-amber-600 mb-2">命运的抉择</h3>
-                                <p className="text-sm text-slate-600">你获得了特殊骰型！请选择你的奖励：</p>
+                        <div className="relative w-full academy-parchment backdrop-blur-xl rounded-2xl p-4 md:p-5 shadow-2xl animate-fade-in overflow-hidden">
+                            <div className="relative text-center mb-3 md:mb-4">
+                                <h3 className="text-lg md:text-xl font-black text-[#71410f] mb-1 md:mb-2 font-serif tracking-wider">命运的抉择</h3>
+                                <p className="text-sm text-[#5b3a18]">你获得了特殊骰型！请选择你的奖励：</p>
                             </div>
 
-                            <div className="bg-amber-50 rounded-xl p-4 mb-4 border border-amber-200">
-                                <div className="text-xs text-amber-700 font-bold mb-2">本次奖励：</div>
-                                <div className="flex gap-4 justify-center">
+                            <div className="relative bg-amber-950/10 rounded-xl p-3 mb-4 border border-amber-900/20 shadow-inner">
+                                <div className="text-xs text-amber-900/75 font-black mb-2">本次奖励：</div>
+                                <div className="flex flex-wrap gap-3 md:gap-4 justify-center">
                                     {result.rewards.crests > 0 && (
                                         <div className="flex items-center gap-2 text-blue-600">
                                             <ShieldCheck size={20} />
@@ -1265,25 +924,32 @@ export default function App() {
                                 </div>
                             </div>
 
-                            <div className="flex gap-3">
+                            <div className="grid grid-cols-[minmax(0,3fr)_minmax(72px,1fr)] gap-3">
                                 {/* 缔结契约按钮 - 带粒子特效和稀有度颜色 - 占据更多空间 */}
-                                <div className="flex-[3] relative">
-                                    {/* 粒子特效背景 */}
-                                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[200%] h-[200%] pointer-events-none z-0">
-                                        <RarityParticles rarity={rarity} />
+                                <div className="flex-[3] relative overflow-visible">
+                                    {/* 按钮外沿余辉 */}
+                                    <div className={`absolute top-1/2 -translate-y-1/2 pointer-events-none z-0 ${overflowAura ? '-inset-x-16 h-44 opacity-100' : '-inset-x-5 h-28 opacity-50 blur-[1px]'}`}>
+                                        <ThreeRarityAura rarity={rarity} intensity={overflowAura ? 'burst' : 'large'} />
                                     </div>
 
                                     <button
                                         onClick={handleChooseContract}
-                                        className={contractButtonClass}
+                                        className={`relative z-10 ${contractButtonClass}`}
                                     >
-                                        {/* Shine Effect */}
-                                        <div className={`absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white to-transparent pointer-events-none ${shineClass}`} />
+                                        {/* 按钮内能量阵 */}
+                                        <div className={`absolute -inset-x-8 -inset-y-6 z-0 mix-blend-screen pointer-events-none ${overflowAura ? 'opacity-95' : 'opacity-75'}`}>
+                                            <ThreeRarityAura rarity={rarity} intensity="normal" />
+                                        </div>
+                                        <div className="absolute inset-0 z-[1] pointer-events-none bg-[radial-gradient(ellipse_at_50%_110%,rgba(255,255,255,0.45),transparent_58%),linear-gradient(180deg,rgba(255,255,255,0.22),transparent_42%,rgba(0,0,0,0.18))]" />
+                                        <div className="absolute inset-x-4 bottom-1 z-[2] h-px bg-white/45 blur-[1px]" />
 
-                                        {/* Inner Highlight */}
-                                        <div className="absolute inset-0 border-t border-white/30 rounded-xl pointer-events-none"></div>
+                                        {/* 闪光效果 */}
+                                        <div className={`absolute inset-0 z-[3] w-full h-full bg-gradient-to-r from-transparent via-white to-transparent pointer-events-none ${shineClass}`} />
 
-                                        <div className="relative z-10 flex flex-col items-center gap-1">
+                                        {/* 内侧高光边线 */}
+                                        <div className="absolute inset-0 z-[4] border border-white/20 border-t-white/45 rounded-xl pointer-events-none"></div>
+
+                                        <div className="relative z-10 flex flex-col items-center gap-1 drop-shadow-[0_2px_6px_rgba(0,0,0,0.55)]">
                                             <Handshake size={20} />
                                             <span className="text-sm">缔结契约</span>
                                             <span className="text-[10px] opacity-80">(抽卡)</span>
@@ -1294,7 +960,7 @@ export default function App() {
                                 {/* 领取奖励按钮 - 占据较少空间 */}
                                 <button
                                     onClick={handleChooseReward}
-                                    className="flex-1 bg-gradient-to-b from-amber-400 via-amber-500 to-amber-600 hover:from-amber-500 hover:via-amber-600 hover:to-amber-700 text-white font-black py-4 px-6 rounded-xl border-b-4 border-amber-800 active:border-b-0 active:translate-y-1 transition-all shadow-lg"
+                                    className="bg-gradient-to-b from-[#f4c96d] via-[#c7852b] to-[#7c4715] hover:brightness-110 text-white font-black py-4 px-2 md:px-6 rounded-xl border-b-4 border-[#4f2d0c] active:border-b-0 active:translate-y-1 transition-all shadow-lg"
                                 >
                                     <div className="flex flex-col items-center gap-1">
                                         <Gift size={20} />
@@ -1311,8 +977,8 @@ export default function App() {
 	                <div className="relative w-full group flex gap-2">
                     {/* External Surrounding Particles (Behind Main Button) - 扩大范围，避免明显矩形裁剪 */}
 	                    {gameState === GameState.CONTRACT_PENDING && result && (
-	                      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[160%] h-[300%] pointer-events-none z-0">
-	                          <RarityParticles rarity={result.rarity} />
+	                      <div className={`absolute top-1/2 -translate-y-1/2 pointer-events-none z-0 ${isOverflowAuraRarity(result.rarity) ? '-inset-x-16 h-48 opacity-100' : '-inset-x-7 h-32 opacity-45 blur-[1px]'}`}>
+		                          <ThreeRarityAura rarity={result.rarity} intensity={isOverflowAuraRarity(result.rarity) ? 'burst' : 'large'} />
 	                      </div>
 	                    )}
 
@@ -1322,7 +988,7 @@ export default function App() {
                             // 经过命运抉择 -> 显示"取消召唤"（需要确认弹框）
                             <button
                                 onClick={() => setShowCancelConfirm(true)}
-                                className="relative z-10 w-14 h-20 rounded-xl bg-slate-600 hover:bg-slate-500 border-b-4 border-slate-800 active:border-b-0 active:translate-y-1 transition-all flex flex-col items-center justify-center shadow-lg"
+                                className="relative z-10 w-12 md:w-14 h-16 md:h-20 rounded-xl bg-[#1b2d4f] hover:bg-[#25406d] border-b-4 border-[#081221] active:border-b-0 active:translate-y-1 transition-all flex flex-col items-center justify-center shadow-lg shrink-0 border border-amber-200/25"
                                 title="取消召唤，返回掷骰子界面"
                             >
                                 <RotateCcw size={20} className="text-white" />
@@ -1332,7 +998,7 @@ export default function App() {
                             // 未经过命运抉择 -> 显示"重投"（直接重投，无需确认）
                             <button
                                 onClick={handleReroll}
-                                className="relative z-10 w-14 h-20 rounded-xl bg-slate-600 hover:bg-slate-500 border-b-4 border-slate-800 active:border-b-0 active:translate-y-1 transition-all flex flex-col items-center justify-center shadow-lg"
+                                className="relative z-10 w-12 md:w-14 h-16 md:h-20 rounded-xl bg-[#1b2d4f] hover:bg-[#25406d] border-b-4 border-[#081221] active:border-b-0 active:translate-y-1 transition-all flex flex-col items-center justify-center shadow-lg shrink-0 border border-amber-200/25"
                                 title="重新投掷"
                             >
                                 <RotateCcw size={20} className="text-white" />
@@ -1348,22 +1014,31 @@ export default function App() {
                             onTouchStart={gameState === GameState.IDLE ? startCharge : undefined}
                             onClick={mainButtonAction || undefined}
                             disabled={isButtonDisabled}
-                            className={`relative z-10 flex-1 h-20 rounded-xl transition-all flex items-center justify-center overflow-hidden shadow-2xl ${buttonStyleClass}`}
+                            className={`relative z-10 isolate flex-1 min-w-0 h-16 md:h-20 rounded-xl transition-all flex items-center justify-center overflow-hidden shadow-2xl ${buttonStyleClass}`}
                         >
-                            {/* Charge Overlay */}
+                            {gameState === GameState.CONTRACT_PENDING && result && (
+                                <>
+                                    <div className={`absolute -inset-x-8 -inset-y-6 z-0 mix-blend-screen pointer-events-none ${isOverflowAuraRarity(result.rarity) ? 'opacity-95' : 'opacity-70'}`}>
+                                        <ThreeRarityAura rarity={result.rarity} intensity="normal" />
+                                    </div>
+                                    <div className="absolute inset-0 z-[1] pointer-events-none bg-[radial-gradient(ellipse_at_50%_105%,rgba(255,255,255,0.42),transparent_60%),linear-gradient(180deg,rgba(255,255,255,0.2),transparent_45%,rgba(0,0,0,0.16))]" />
+                                </>
+                            )}
+
+                            {/* 蓄力进度层 */}
                             {gameState === GameState.CHARGING && (
-                                <div className="absolute left-0 top-0 h-full bg-white/30 transition-all pointer-events-none" style={{ width: `${chargeLevel}%` }} />
+                                <div className="absolute left-0 top-0 z-[2] h-full bg-white/30 transition-all pointer-events-none" style={{ width: `${chargeLevel}%` }} />
                             )}
 
-                            {/* Shine Effect */}
+                            {/* 闪光效果 */}
                             {gameState === GameState.CONTRACT_PENDING && (
-                               <div className={`absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white to-transparent pointer-events-none ${shineClass}`} />
+                               <div className={`absolute inset-0 z-[3] w-full h-full bg-gradient-to-r from-transparent via-white to-transparent pointer-events-none ${shineClass}`} />
                             )}
 
-                            {/* Inner Highlight/Border for Extra 3D Detail */}
-                            <div className="absolute inset-0 border-t border-white/30 rounded-xl pointer-events-none"></div>
+                            {/* 内侧高光边线 */}
+                            <div className="absolute inset-0 z-[4] border border-white/15 border-t-white/40 rounded-xl pointer-events-none"></div>
 
-                            <span className="relative z-10 font-black text-xl uppercase tracking-[0.3em] flex items-center justify-center gap-3 drop-shadow-md">
+                            <span className="relative z-10 font-black text-base md:text-xl uppercase tracking-[0.16em] md:tracking-[0.3em] flex items-center justify-center gap-2 md:gap-3 drop-shadow-[0_2px_7px_rgba(0,0,0,0.6)] whitespace-nowrap">
                                 {gameState === GameState.CONTRACT_PENDING && <Handshake size={24} />}
                                 {mainButtonText}
                             </span>
@@ -1375,10 +1050,10 @@ export default function App() {
                         <button
                             onClick={handleFailureReset}
                             disabled={consecutiveFailures < 5}
-                            className={`relative z-10 w-14 h-20 rounded-xl border-b-4 transition-all flex flex-col items-center justify-center shadow-lg ${
+                            className={`relative z-10 w-12 md:w-14 h-16 md:h-20 rounded-xl border-b-4 transition-all flex flex-col items-center justify-center shadow-lg shrink-0 ${
                                 consecutiveFailures >= 5
-                                    ? 'bg-amber-600 hover:bg-amber-500 border-amber-800 active:border-b-0 active:translate-y-1 cursor-pointer'
-                                    : 'bg-slate-400 border-slate-500 cursor-not-allowed opacity-60'
+                                    ? 'bg-amber-700 hover:bg-amber-600 border-amber-950 active:border-b-0 active:translate-y-1 cursor-pointer border border-amber-200/25'
+                                    : 'bg-slate-600 border-slate-800 cursor-not-allowed opacity-60'
                             }`}
                             title={consecutiveFailures >= 5
                                 ? '返还消耗的道具并重新开始'
@@ -1391,15 +1066,15 @@ export default function App() {
                     )}
                 </div>
 
-                <div className="text-[11px] text-center text-slate-400 font-black uppercase tracking-[0.4em]">
+                <div className="text-[10px] md:text-[11px] text-center text-amber-100/55 font-black uppercase tracking-[0.25em] md:tracking-[0.4em]">
                     Crest: {fixedDiceIndices.length} | Weighted: {weightedDiceIndices.length}
                 </div>
                 {(!capabilities.openRouter || !capabilities.runningHub || !capabilities.miniMax) && (
                     <button
                         onClick={() => setIsApiSettingsOpen(true)}
-                        className="text-[11px] text-center text-amber-600 font-bold bg-amber-50/90 border border-amber-200 rounded-xl px-3 py-2 hover:bg-amber-100"
+                        className="text-[11px] text-center text-amber-100 font-bold bg-amber-500/16 border border-amber-200/30 rounded-xl px-3 py-2 hover:bg-amber-500/25 shadow-sm"
                     >
-                        API 未完整配置：缺失能力会自动降级
+                        API 未完整配置：缺少 {missingCapabilityLabels}，对应能力会自动降级
                     </button>
                 )}
             </div>
@@ -1407,15 +1082,16 @@ export default function App() {
       </div>
 
       {loading && (
-        <div className="fixed inset-0 z-[100] bg-slate-50 flex flex-col items-center justify-center">
+        <div className="fixed inset-0 z-[100] bg-[#07101f] bg-[url('/ui/academy-hall.png')] bg-cover bg-center flex flex-col items-center justify-center">
+            <div className="absolute inset-0 bg-black/62 backdrop-blur-sm" />
             {/* 游戏风格魔法阵加载动画 */}
             <div className="relative w-24 h-24 mb-6">
                 {/* 外圈 - 逆时针旋转 */}
-                <div className="absolute inset-0 border-4 border-indigo-300 rounded-full animate-[spin_3s_linear_infinite_reverse] opacity-60" />
+                <div className="absolute inset-0 border-4 border-amber-300 rounded-full animate-[spin_3s_linear_infinite_reverse] opacity-60" />
                 {/* 中圈 - 顺时针旋转 */}
-                <div className="absolute inset-2 border-2 border-dashed border-indigo-500 rounded-full animate-[spin_2s_linear_infinite]" />
+                <div className="absolute inset-2 border-2 border-dashed border-blue-300 rounded-full animate-[spin_2s_linear_infinite]" />
                 {/* 内圈 - 脉冲 */}
-                <div className="absolute inset-4 border-2 border-indigo-600 rounded-full animate-pulse" />
+                <div className="absolute inset-4 border-2 border-amber-400 rounded-full animate-pulse" />
                 {/* 中心符文 */}
                 <div className="absolute inset-0 flex items-center justify-center text-3xl animate-pulse">⚔️</div>
                 {/* 四角符文 */}
@@ -1424,7 +1100,7 @@ export default function App() {
                 <div className="absolute top-1/2 -left-1 -translate-y-1/2 text-sm animate-bounce delay-200">✦</div>
                 <div className="absolute top-1/2 -right-1 -translate-y-1/2 text-sm animate-bounce delay-300">✦</div>
             </div>
-            <div className="text-indigo-900 text-lg font-black tracking-[0.5em] uppercase animate-pulse">正在刻印纹章</div>
+            <div className="relative text-amber-100 text-lg font-black tracking-[0.5em] uppercase animate-pulse drop-shadow-[0_0_12px_rgba(251,191,36,0.45)]">正在刻印纹章</div>
         </div>
       )}
 
@@ -1494,7 +1170,8 @@ export default function App() {
          const isUR = rarity === 'UR';
 
          return (
-         <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex flex-col items-center justify-center">
+         <div className="fixed inset-0 z-[60] bg-[#07101f] bg-[url('/ui/academy-hall.png')] bg-cover bg-center flex flex-col items-center justify-center">
+             <div className="absolute inset-0 bg-black/72 backdrop-blur-sm" />
              {/* 游戏风格召唤魔法阵动画 */}
              <div className="relative w-32 h-32 mb-8">
                  {/* 最外圈 - 慢速旋转 + 发光 */}
@@ -1530,10 +1207,10 @@ export default function App() {
                  </div>
              </div>
 
-             <div className="text-white text-lg font-black tracking-[0.5em] uppercase animate-pulse mb-4">{loadingText}</div>
+             <div className="relative text-amber-50 text-lg font-black tracking-[0.5em] uppercase animate-pulse mb-4 drop-shadow-[0_0_16px_rgba(251,191,36,0.45)]">{loadingText}</div>
 
              {/* Visual Progress Bar - 魔法能量条样式 */}
-             <div className={`w-64 h-3 bg-black/40 rounded-full overflow-hidden border ${colors.progressBorder} ${colors.progressShadow}`}>
+             <div className={`relative w-64 h-3 bg-black/40 rounded-full overflow-hidden border ${colors.progressBorder} ${colors.progressShadow}`}>
                  <div
                     className={`h-full ${colors.progressBg} transition-all duration-100 ease-linear ${colors.progressGlow} relative`}
                     style={{ width: `${visualProgress}%` }}
@@ -1549,15 +1226,15 @@ export default function App() {
       {/* 取消召唤确认弹框 */}
       {showCancelConfirm && (
         <div className="fixed inset-0 z-[200] bg-black/60 flex items-center justify-center p-4">
-          <div className="bg-slate-800 rounded-2xl border-2 border-slate-600 shadow-2xl max-w-sm w-full p-6 animate-[fadeIn_0.2s_ease-out]">
-            <h3 className="text-white font-black text-lg mb-4 text-center">确定取消召唤吗？</h3>
-            <p className="text-slate-300 text-sm mb-6 text-center leading-relaxed">
+          <div className="academy-parchment rounded-2xl max-w-sm w-full p-6 animate-[fadeIn_0.2s_ease-out]">
+            <h3 className="text-[#2b1a10] font-black text-lg mb-4 text-center font-serif">确定取消召唤吗？</h3>
+            <p className="text-[#5b3a18] text-sm mb-6 text-center leading-relaxed">
               取消后将返回到掷骰子界面，并且已消耗的<span className="text-amber-400 font-bold">刻印</span>、<span className="text-purple-400 font-bold">灌铅骰子</span>等消耗品将<span className="text-red-400 font-bold">不会返还</span>。
             </p>
             <div className="flex gap-3">
               <button
                 onClick={() => setShowCancelConfirm(false)}
-                className="flex-1 py-3 px-4 rounded-xl bg-slate-600 hover:bg-slate-500 text-white font-bold transition-all border-b-4 border-slate-700 active:border-b-0 active:translate-y-1"
+                className="flex-1 py-3 px-4 rounded-xl bg-[#1b2d4f]/20 hover:bg-[#1b2d4f]/30 text-[#34405c] font-bold transition-all border-b-4 border-[#1b2d4f]/35 active:border-b-0 active:translate-y-1"
               >
                 继续召唤
               </button>
@@ -1575,7 +1252,7 @@ export default function App() {
       {/* API错误弹框 */}
       {apiErrorModal.show && (
         <div className="fixed inset-0 z-[200] bg-black/70 flex items-center justify-center p-4">
-          <div className="bg-slate-800 rounded-2xl border-2 border-red-500/50 shadow-2xl max-w-md w-full p-6 animate-[fadeIn_0.2s_ease-out]">
+          <div className="academy-parchment rounded-2xl border-2 border-red-500/50 shadow-2xl max-w-md w-full p-6 animate-[fadeIn_0.2s_ease-out]">
             <div className="flex items-center justify-center mb-4">
               <div className="w-12 h-12 rounded-full bg-red-500/20 flex items-center justify-center">
                 <svg className="w-6 h-6 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1584,8 +1261,8 @@ export default function App() {
               </div>
             </div>
             <h3 className="text-red-400 font-black text-lg mb-4 text-center">API 调用失败</h3>
-            <div className="bg-slate-900/50 rounded-lg p-4 mb-6 max-h-40 overflow-y-auto">
-              <p className="text-slate-300 text-sm whitespace-pre-wrap break-words leading-relaxed">
+            <div className="bg-red-950/10 rounded-lg p-4 mb-6 max-h-40 overflow-y-auto border border-red-900/15">
+              <p className="text-[#4a2716] text-sm whitespace-pre-wrap break-words leading-relaxed">
                 {apiErrorModal.message}
               </p>
             </div>
@@ -1594,7 +1271,7 @@ export default function App() {
                 setApiErrorModal({ show: false, message: '' });
                 setGameState(GameState.CONTRACT_PENDING);
               }}
-              className="w-full py-3 px-4 rounded-xl bg-slate-600 hover:bg-slate-500 text-white font-bold transition-all border-b-4 border-slate-700 active:border-b-0 active:translate-y-1 flex items-center justify-center gap-2"
+              className="w-full py-3 px-4 rounded-xl bg-[#1b2d4f] hover:bg-[#25406d] text-amber-50 font-bold transition-all border-b-4 border-[#081221] active:border-b-0 active:translate-y-1 flex items-center justify-center gap-2"
             >
               <RotateCcw size={18} />
               返回缔结契约

@@ -63,37 +63,38 @@ const DiceCanvas = forwardRef<DiceCanvasRef, Props>((props, ref) => {
     initializedRef.current = true;
 
     const scene = new THREE.Scene();
-    // Light Background
-    const bgColor = 0xf1f5f9; // Slate-100
-    scene.background = new THREE.Color(bgColor);
+    // 画布保持透明，让应用背景在骰子后方显示，避免 UI 遮罩压暗骰子。
+    const bgColor = 0x101b33;
+    scene.background = null;
     scene.fog = new THREE.Fog(bgColor, 20, 50);
 
     const camera = new THREE.PerspectiveCamera(35, window.innerWidth / window.innerHeight, 0.1, 100);
     camera.position.set(0, 32, 12);
     camera.lookAt(0, 0, 0);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setClearColor(0x000000, 0);
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     // Tone mapping adjusted for solid look
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 0.8; // Reduced exposure to prevent burnout on white dice
+    renderer.toneMappingExposure = 0.95;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     rendererRef.current = renderer;
     containerRef.current.appendChild(renderer.domElement);
 
     // Enhanced Lighting for Light Mode - Balanced
-    const ambient = new THREE.AmbientLight(0xffffff, 0.6); 
+    const ambient = new THREE.AmbientLight(0xdbeafe, 0.58); 
     scene.add(ambient);
 
     // Hemisphere Light
-    const hemiLight = new THREE.HemisphereLight(0xffffff, 0xe2e8f0, 0.4);
+    const hemiLight = new THREE.HemisphereLight(0xf8e7b5, 0x111827, 0.5);
     hemiLight.position.set(0, 50, 0);
     scene.add(hemiLight);
 
     // Main Directional Light (Sun)
-    const light = new THREE.DirectionalLight(0xffffff, 1.3);
+    const light = new THREE.DirectionalLight(0xffe8b0, 1.35);
     light.position.set(10, 30, 15);
     light.castShadow = true;
     light.shadow.mapSize.width = 2048;
@@ -106,7 +107,7 @@ const DiceCanvas = forwardRef<DiceCanvasRef, Props>((props, ref) => {
     scene.add(light);
 
     // Fill Light
-    const fillLight = new THREE.DirectionalLight(0xeef2ff, 0.5);
+    const fillLight = new THREE.DirectionalLight(0x93c5fd, 0.65);
     fillLight.position.set(-10, 20, -10);
     scene.add(fillLight);
 
@@ -121,12 +122,44 @@ const DiceCanvas = forwardRef<DiceCanvasRef, Props>((props, ref) => {
     world.addBody(groundBody);
 
     // Shadow receiver plane (Visual only)
-    const planeGeo = new THREE.PlaneGeometry(100, 100);
-    const planeMat = new THREE.ShadowMaterial({ opacity: 0.2, color: 0x0f172a }); // Darker shadow
+    const planeGeo = new THREE.CircleGeometry(16, 96);
+    const planeMat = new THREE.MeshStandardMaterial({
+      color: 0x111a30,
+      roughness: 0.62,
+      metalness: 0.12,
+      transparent: true,
+      opacity: 0.68
+    });
     const planeMesh = new THREE.Mesh(planeGeo, planeMat);
     planeMesh.rotation.x = -Math.PI / 2;
     planeMesh.receiveShadow = true;
     scene.add(planeMesh);
+
+    const altarRing = new THREE.Mesh(
+      new THREE.RingGeometry(6.5, 7.15, 128),
+      new THREE.MeshBasicMaterial({
+        color: 0xd6b46a,
+        transparent: true,
+        opacity: 0.42,
+        side: THREE.DoubleSide
+      })
+    );
+    altarRing.rotation.x = -Math.PI / 2;
+    altarRing.position.y = 0.012;
+    scene.add(altarRing);
+
+    const innerRing = new THREE.Mesh(
+      new THREE.RingGeometry(2.2, 2.28, 96),
+      new THREE.MeshBasicMaterial({
+        color: 0x60a5fa,
+        transparent: true,
+        opacity: 0.28,
+        side: THREE.DoubleSide
+      })
+    );
+    innerRing.rotation.x = -Math.PI / 2;
+    innerRing.position.y = 0.016;
+    scene.add(innerRing);
 
     const wallMat = new CANNON.Material("wall");
     const wallShape = new CANNON.Plane();
@@ -534,7 +567,7 @@ const DiceCanvas = forwardRef<DiceCanvasRef, Props>((props, ref) => {
       };
   };
 
-  return <div ref={containerRef} className="absolute inset-0 z-0" />;
+  return <div ref={containerRef} className="absolute inset-0 z-[2]" />;
 });
 
 export default DiceCanvas;

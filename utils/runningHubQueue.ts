@@ -2,6 +2,7 @@
  * RunningHub API 任务队列管理器
  * 确保同一 API Key 同时只有一个任务在运行
  */
+import { logger } from './logger';
 
 type TaskFunction = () => Promise<void>;
 
@@ -63,7 +64,7 @@ class RunningHubQueue {
       };
 
       this.queue.push(task);
-      console.log(`[Queue] Task ${taskId} added. Queue length: ${this.queue.length}`);
+      logger.debug(`[Queue] 任务 ${taskId} 已加入队列，当前长度 ${this.queue.length}`);
 
       // 如果没有正在处理的任务，开始处理
       if (!this.isProcessing) {
@@ -79,7 +80,7 @@ class RunningHubQueue {
     if (this.queue.length === 0) {
       this.isProcessing = false;
       this.currentTaskId = null;
-      console.log('[Queue] Queue empty, idle.');
+      logger.debug('[Queue] 队列已空闲');
       return;
     }
 
@@ -87,7 +88,7 @@ class RunningHubQueue {
     const task = this.queue.shift()!;
     this.currentTaskId = task.id;
 
-    console.log(`[Queue] Processing task ${task.id}. Remaining: ${this.queue.length}`);
+    logger.debug(`[Queue] 开始处理任务 ${task.id}，剩余 ${this.queue.length}`);
 
     try {
       await task.execute();
@@ -110,7 +111,7 @@ class RunningHubQueue {
     if (idx >= 0) {
       const task = this.queue.splice(idx, 1)[0];
       task.reject(new Error('Task cancelled'));
-      console.log(`[Queue] Task ${taskId} cancelled.`);
+      logger.debug(`[Queue] 任务 ${taskId} 已取消`);
       return true;
     }
     return false;
@@ -124,7 +125,7 @@ class RunningHubQueue {
       task.reject(new Error('Queue cleared'));
     });
     this.queue = [];
-    console.log('[Queue] Queue cleared.');
+    logger.debug('[Queue] 队列已清空');
   }
 }
 
@@ -139,4 +140,3 @@ export function getQueueStatus() {
 export function getTaskPosition(taskId: string) {
   return runningHubQueue.getPosition(taskId);
 }
-
