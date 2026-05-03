@@ -6,6 +6,7 @@
 import { CharacterInfo, SkillType, VoiceData, CharacterVoices } from '../types';
 import { ApiKeys, DEFAULT_OPENROUTER_MODEL } from '../utils/apiKeyStore';
 import { proxyMiniMaxT2A, proxyMiniMaxVoiceDesign, proxyOpenRouterChat } from '../utils/apiClient';
+import { logger } from '../utils/logger';
 
 // T2A 语音合成配置
 export interface T2AConfig {
@@ -64,13 +65,13 @@ export function audioDataToBlob(audioData: string): Blob {
   // 如果不是纯 hex，就认为是 base64
   const isBase64 = !isHex;
 
-  console.log(`[VoiceService] 音频格式检测: isHex=${isHex}, isBase64=${isBase64}, 数据前20字符: ${audioData.substring(0, 20)}`);
+  logger.debug('[VoiceService] 音频格式检测', { isHex, isBase64, length: audioData.length });
 
   if (isBase64) {
-    console.log('[VoiceService] 使用 base64 解码');
+    logger.debug('[VoiceService] 使用 base64 解码');
     return base64ToAudioBlob(audioData);
   } else {
-    console.log('[VoiceService] 使用 hex 解码');
+    logger.debug('[VoiceService] 使用 hex 解码');
     return hexToAudioBlob(audioData);
   }
 }
@@ -359,7 +360,7 @@ export async function generateVoicePromptAndLines(
 }`;
 
   if (!openRouterApiKey?.trim()) {
-    console.warn('[VoiceService] 未配置 OpenRouter API Key，使用本地语音台词兜底');
+    logger.warn('[VoiceService] 未配置 OpenRouter API Key，使用本地语音台词兜底');
     return buildFallbackVoiceConfig(characterInfo);
   }
 
@@ -385,7 +386,7 @@ export async function generateVoicePromptAndLines(
       throw new Error('无法解析响应');
     }
   } catch (e) {
-    console.error('[VoiceService] 解析响应失败:', content);
+    logger.error('[VoiceService] 解析响应失败', { length: content.length });
     // 使用默认值，根据年龄和种族匹配音色
     parsed = {
       voice_prompt: `${voiceConfig.example}，${raceEffect.atmosphere}，语速从容舒缓`,
@@ -420,7 +421,7 @@ export async function createVoiceDesign(
   prompt: string,
   previewText: string = "你好，我是你的专属角色"
 ): Promise<{ voiceId: string; audioHex: string }> {
-  console.log('[VoiceService] 调用 voice_design API 创建音色...');
+  logger.info('[VoiceService] 调用 voice_design API 创建音色');
 
   const data = await proxyMiniMaxVoiceDesign(miniMaxApiKey, {
     prompt: prompt,
@@ -432,7 +433,7 @@ export async function createVoiceDesign(
     throw new Error(`MiniMax voice_design API错误: ${data.base_resp?.status_msg || '未知错误'}`);
   }
 
-  console.log('[VoiceService] 成功获取 voice_id:', data.voice_id);
+  logger.info('[VoiceService] 成功获取 voice_id', data.voice_id);
 
   return {
     voiceId: data.voice_id,
@@ -456,7 +457,7 @@ export async function generateSpeechWithT2A(
   const pitch = config.pitch ?? 0;
   const emotion = config.emotion ?? 'neutral';
 
-  console.log(`[VoiceService] 调用 T2A API: "${text}" (语速:${speed}, 情绪:${emotion})`);
+  logger.info('[VoiceService] 调用 T2A API', { text, speed, emotion });
 
   const data = await proxyMiniMaxT2A(miniMaxApiKey, {
     model: "speech-02-turbo",
@@ -486,7 +487,7 @@ export async function generateSpeechWithT2A(
     throw new Error('T2A API 未返回音频数据');
   }
 
-  console.log(`[VoiceService] T2A 生成成功，音频数据长度: ${audioData.length}`);
+  logger.info('[VoiceService] T2A 生成成功', { audioLength: audioData.length });
 
   // 直接返回音频数据，playAudioData 会自动检测格式
   return audioData;
@@ -525,14 +526,12 @@ export async function generateCharacterVoices(
       return { success: false, error: '未配置 MiniMax API Key' };
     }
 
-    console.log('[VoiceService] ========================================');
-    console.log('[VoiceService] 开始生成角色语音:', characterInfo.name);
-    console.log('[VoiceService] ========================================');
+    logger.info('[VoiceService] 开始生成角色语音', characterInfo.name);
 
     // 1. 生成音色描述和台词
     const { voicePrompt, lines } = await generateVoicePromptAndLines(characterInfo, apiKeys.openRouter, apiKeys.openRouterModel);
-    console.log('[VoiceService] 音色描述:', voicePrompt);
-    console.log('[VoiceService] 台词:', lines);
+    logger.debug('[VoiceService] 音色描述', voicePrompt);
+    logger.debug('[VoiceService] 台词', lines);
 
     // 2. 获取需要生成的技能类型
     const skillTypes = getSkillTypesByRarity(characterInfo.rarity);
@@ -545,7 +544,7 @@ export async function generateCharacterVoices(
       const line = lines[skillType];
 
       onProgress?.(i + 1, skillTypes.length, skillType);
-      console.log(`[VoiceService] 生成${getSkillTypeName(skillType)}语音: "${line}"`);
+      logger.info(`[VoiceService] 生成${getSkillTypeName(skillType)}语音`, line);
 
       // 调用 voice_design API，同时设计音色并朗读台词
       const result = await createVoiceDesign(apiKeys.miniMax, voicePrompt, line);
@@ -565,9 +564,7 @@ export async function generateCharacterVoices(
       }
     }
 
-    console.log('[VoiceService] ========================================');
-    console.log('[VoiceService] 语音生成完成，共', voices.length, '条');
-    console.log('[VoiceService] ========================================');
+    logger.info('[VoiceService] 语音生成完成', { count: voices.length });
 
     return {
       success: true,
@@ -579,7 +576,7 @@ export async function generateCharacterVoices(
       }
     };
   } catch (error) {
-    console.error('[VoiceService] 语音生成失败:', error);
+    logger.error('[VoiceService] 语音生成失败', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : '未知错误'

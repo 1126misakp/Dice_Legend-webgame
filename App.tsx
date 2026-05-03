@@ -9,17 +9,12 @@ import InventoryBar from './components/InventoryBar';
 import ThreeRarityAura from './components/ThreeRarityAura';
 import ApiSettingsPanel from './components/ApiSettingsPanel';
 import { DiceResult, GameState, Inventory, CharacterInfo } from './types';
-import { calculateDiceResult, upgradeProfession, generateFallbackInfo } from './logic/gameLogic';
+import { calculateDiceResult, upgradeProfession } from './logic/gameLogic';
 import { Dices, RefreshCw, Eye, MessageSquareQuote, Handshake, RotateCcw, Gift, ShieldCheck, Anchor, KeyRound } from 'lucide-react';
-import { runningHubQueue, getQueueStatus } from './utils/runningHubQueue';
 import { audioService, Rarity } from './services/audioService';
 import { playClickSound } from './hooks/useButtonSound';
-import { generateCharacterVoices } from './services/voiceService';
 import { ApiKeys, DEFAULT_OPENROUTER_MODEL, clearApiKeys, getApiCapabilities, loadApiKeys, saveApiKeys } from './utils/apiKeyStore';
-import { ApiClientError, proxyOpenRouterChat, proxyRunningHubOutputs, proxyRunningHubRun } from './utils/apiClient';
-import { buildCharacterInfoPrompts, buildEmergencyImagePrompt, buildImagePromptUserInput, buildLocalImagePrompt, ILLUSTRATOR_SYSTEM_PROMPT } from './utils/promptTemplates';
-import { extractRunningHubImageUrl, extractRunningHubTaskId, getRunningHubFailureMessage, isRunningHubTaskRunning, isRunningHubSuccessStatus } from './utils/runningHubResult';
-import { logger } from './utils/logger';
+import { useContractGeneration } from './hooks/useContractGeneration';
 
 export default function App() {
   const diceRef = useRef<DiceCanvasRef>(null);
@@ -29,9 +24,6 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [peekMode, setPeekMode] = useState(false);
   const [isStyleOpen, setIsStyleOpen] = useState(false);
-  const [loadingText, setLoadingText] = useState("命运编织中...");
-  const [visualProgress, setVisualProgress] = useState(0);
-  
   const [stylePrompt, setStylePrompt] = useState('火焰纹章风格+西式幻想RPG');
   const [inventory, setInventory] = useState<Inventory>({ crests: 1, weightedDice: 1 });
   const [apiKeys, setApiKeys] = useState<ApiKeys>(() => loadApiKeys());
@@ -48,7 +40,6 @@ export default function App() {
   const [chargeLevel, setChargeLevel] = useState(0);
   const chargeStartTime = useRef<number>(0);
   const chargeRequestRef = useRef<number>(0);
-  const progressIntervalRef = useRef<any>(null);
   const gameStateRef = useRef(gameState);
   const chargeLevelRef = useRef(chargeLevel);
 
@@ -79,29 +70,6 @@ export default function App() {
     };
   }, []);
 
-  // Helper to animate progress bar over 90 seconds
-  const startProgressAnimation = () => {
-      setVisualProgress(0);
-      if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
-      
-      const startTime = Date.now();
-      const duration = 90000; // 90 seconds
-
-      progressIntervalRef.current = setInterval(() => {
-          const elapsed = Date.now() - startTime;
-          const progress = Math.min((elapsed / duration) * 100, 99); // Cap at 99% until actually done
-          setVisualProgress(progress);
-      }, 100);
-  };
-
-  const stopProgressAnimation = () => {
-      if (progressIntervalRef.current) {
-          clearInterval(progressIntervalRef.current);
-          progressIntervalRef.current = null;
-      }
-      setVisualProgress(100);
-  };
-
   const handleSaveApiKeys = (nextKeys: ApiKeys) => {
       const saved = saveApiKeys(nextKeys);
       setApiKeys(saved);
@@ -110,6 +78,39 @@ export default function App() {
   const handleClearApiKeys = () => {
       setApiKeys(clearApiKeys());
   };
+
+  const {
+      loadingText,
+      visualProgress,
+      generateContract,
+      cancelGeneration,
+      resetProgress
+  } = useContractGeneration({
+      apiKeys,
+      capabilities,
+      openRouterModel,
+      onCharacterReady: (info) => {
+          audioService.playSummonSound(info.rarity as Rarity);
+          setGameState(GameState.SHOW_CARD);
+          setFixedDiceIndices([]);
+          setWeightedDiceIndices([]);
+          setConsecutiveFailures(0);
+          setConsumedItems({ crests: 0, weightedDice: 0 });
+          setCharInfo(info);
+      },
+      onVoiceReady: (info) => {
+          setCharInfo(info);
+      },
+      onApiError: (message) => {
+          setApiErrorModal({ show: true, message });
+      },
+      onImageFailure: () => {
+          setConsecutiveFailures(prev => prev + 1);
+      },
+      onReturnToContractPending: () => {
+          setGameState(GameState.CONTRACT_PENDING);
+      }
+  });
 
   // 1. 投骰结束
   const handleRollComplete = (rawResult: any) => {
@@ -188,318 +189,8 @@ export default function App() {
   const handleMakeContract = async () => {
     if (!result || gameState !== GameState.CONTRACT_PENDING) return;
     playClickSound(); // 播放点击音效
-    
     setGameState(GameState.AI_GENERATING);
-    setLoadingText("正在撰写命运篇章..."); // Step 1 status
-    setVisualProgress(0);
-
-    // 1. Text Generation (OpenRouter - grok-4.1-fast)
-    let generatedInfo: CharacterInfo | null = null;
-
-    try {
-      const { systemPrompt, userPrompt } = buildCharacterInfoPrompts(result, stylePrompt);
-
-      if (!capabilities.openRouter) {
-        logger.warn("[CharacterInfo] 未配置 OpenRouter API Key，使用本地角色文案兜底");
-        generatedInfo = generateFallbackInfo(result, stylePrompt);
-      } else {
-      logger.info("[CharacterInfo] 开始生成角色文案");
-      const data = await proxyOpenRouterChat(apiKeys.openRouter, {
-        model: openRouterModel,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt }
-        ],
-        max_tokens: 10000,
-        temperature: 0.8
-      });
-      const content = data.choices[0].message.content;
-
-      // 清理可能的 Markdown 代码块包装
-      let cleanedContent = content.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
-      const aiData = JSON.parse(cleanedContent);
-
-      generatedInfo = {
-        ...aiData,
-        style: stylePrompt,
-        gender: '女',
-        age: result.age,
-        profession: result.profession,
-        race: result.race.name,
-        attribute: result.attribute,
-        rarity: result.rarity
-      };
-
-      logger.info("[CharacterInfo] 角色文案生成成功");
-      }
-
-    } catch (e: any) {
-      logger.warn("Text Generation failed:", e);
-
-      if (e instanceof ApiClientError && e.code === 'REQUEST_TIMEOUT') {
-        // 超时：提示并自动返回缔结契约界面
-        setLoadingText("角色信息生成超时，正在返回...");
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        setGameState(GameState.CONTRACT_PENDING);
-        return;
-      } else if (e instanceof ApiClientError) {
-        // API错误：弹框显示错误详情
-        setApiErrorModal({
-          show: true,
-          message: `角色信息生成失败\n\n错误详情：${e.message}`
-        });
-        return;
-      } else {
-        // 其他错误（如网络错误等）：尝试使用本地备用生成器
-        logger.warn("Using fallback generator due to error:", e);
-        generatedInfo = generateFallbackInfo(result, stylePrompt);
-      }
-    }
-
-    if (!generatedInfo) return;
-
-    // === 并行任务：开始生成角色语音（不阻塞后续流程）===
-    // 语音生成Promise，稍后会等待它完成
-    let voiceGenerationPromise: Promise<any> | null = null;
-
-    if (capabilities.miniMax) {
-      logger.info('[Voice] 开始并行生成角色语音');
-      voiceGenerationPromise = generateCharacterVoices(
-        generatedInfo,
-        apiKeys,
-        (current, total, skillType) => {
-          logger.debug(`[Voice] 生成进度: ${current}/${total} - ${skillType}`);
-        }
-      ).catch(err => {
-        logger.error('[Voice] 语音生成异常', err);
-        return { success: false, error: err.message };
-      });
-    } else {
-      logger.warn('[Voice] 未配置 MiniMax API Key，跳过语音生成');
-    }
-
-    // 2. 使用 OpenRouter API (grok-4.1-fast) 生成立绘提示词
-    setLoadingText("灵魂连接中...");
-
-    let imagePrompt = "";
-    const characterInfoForPrompt = buildImagePromptUserInput(generatedInfo);
-
-    try {
-      if (!capabilities.openRouter) {
-        logger.warn("[ImagePrompt] 未配置 OpenRouter API Key，使用本地立绘提示词");
-        imagePrompt = buildLocalImagePrompt(generatedInfo);
-      } else {
-      logger.info("[ImagePrompt] 开始生成立绘提示词");
-      const openRouterData = await proxyOpenRouterChat(apiKeys.openRouter, {
-        "model": openRouterModel,
-        "messages": [
-          { "role": "system", "content": ILLUSTRATOR_SYSTEM_PROMPT },
-          { "role": "user", "content": characterInfoForPrompt }
-        ],
-        "max_tokens": 10000,
-        "temperature": 0.8
-      });
-      imagePrompt = openRouterData.choices[0]?.message?.content || "";
-
-      // 清理提示词：移除可能的 markdown 代码块标记
-      imagePrompt = imagePrompt.replace(/```[\s\S]*?```/g, '').replace(/`/g, '').trim();
-
-      logger.debug("[ImagePrompt] 立绘提示词生成成功", imagePrompt);
-      }
-
-    } catch (e: any) {
-      logger.warn("[ImagePrompt] API failed:", e);
-
-      if (e instanceof ApiClientError && e.code === 'REQUEST_TIMEOUT') {
-        // 超时：提示并自动返回缔结契约界面
-        setLoadingText("立绘提示词生成超时，正在返回...");
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        setGameState(GameState.CONTRACT_PENDING);
-        return;
-      } else if (e instanceof ApiClientError) {
-        // API错误：弹框显示错误详情
-        setApiErrorModal({
-          show: true,
-          message: `立绘提示词生成失败\n\n错误详情：${e.message}`
-        });
-        return;
-      } else {
-        // 其他错误：使用备用提示词
-        logger.warn("[ImagePrompt] 使用本地备用提示词");
-        imagePrompt = buildEmergencyImagePrompt(generatedInfo);
-      }
-    }
-
-    if (!imagePrompt) {
-      imagePrompt = buildEmergencyImagePrompt(generatedInfo);
-    }
-
-    const finalizeCharacter = async (info: CharacterInfo) => {
-        audioService.playSummonSound(info.rarity as Rarity);
-        setGameState(GameState.SHOW_CARD);
-        setFixedDiceIndices([]);
-        setWeightedDiceIndices([]);
-        setConsecutiveFailures(0);
-        setConsumedItems({ crests: 0, weightedDice: 0 });
-        setCharInfo(info);
-
-        if (voiceGenerationPromise) {
-            logger.info('[Voice] 等待语音生成完成');
-            const voiceResult = await voiceGenerationPromise;
-
-            if (voiceResult?.success && voiceResult?.data) {
-                logger.info('[Voice] 语音生成成功');
-                setCharInfo({ ...info, voices: voiceResult.data });
-            } else {
-                logger.warn('[Voice] 语音生成失败', voiceResult?.error);
-            }
-        }
-    };
-
-    if (!capabilities.runningHub) {
-        logger.warn('[RunningHub] 未配置 RunningHub API Key，跳过立绘生成');
-        stopProgressAnimation();
-        setLoadingText('未配置立绘服务，展示文字契约...');
-        await new Promise(r => setTimeout(r, 800));
-        await finalizeCharacter(generatedInfo);
-        return;
-    }
-
-    // 3. Image Generation (RunningHub) - 使用新的工作流
-    // 单次图片生成尝试
-    const attemptImageGeneration = async (): Promise<string> => {
-        setLoadingText("灵魂连接中...");
-        startProgressAnimation();
-
-        // --- Step A: Submit Task ---
-        const executeData = await proxyRunningHubRun(apiKeys.runningHub, {
-            "webappId": "2004539728869425154",
-            "nodeInfoList": [
-                { "nodeId": "63", "fieldName": "text", "fieldValue": imagePrompt, "description": "角色立绘完整提示词" },
-                { "nodeId": "71", "fieldName": "text", "fieldValue": generatedInfo.name.split('·')[0], "description": "角色姓名" }
-            ]
-        });
-        if (executeData.code !== 0) {
-            throw new Error(`RunningHub API error: ${executeData.msg || 'Unknown error'}`);
-        }
-
-        logger.debug("[RunningHub] 静态立绘任务提交成功", executeData);
-
-        // --- Step B: Determine Task ID or Direct Result ---
-        let imageUrl = "";
-        let taskId = extractRunningHubTaskId(executeData) || "";
-
-        const directImage = extractRunningHubImageUrl(executeData);
-        if (directImage) {
-            imageUrl = directImage;
-        }
-
-        // --- Step C: Poll for Result if Task ID exists ---
-        if (taskId && !imageUrl) {
-            logger.info("[RunningHub] 开始轮询静态立绘任务");
-            setLoadingText("正在召唤...");
-
-            let attempts = 0;
-            const maxAttempts = 200;
-
-            while (!imageUrl && attempts < maxAttempts) {
-                try {
-                    const queryData = await proxyRunningHubOutputs(apiKeys.runningHub, taskId);
-                    if (attempts % 10 === 0) {
-                        logger.debug(`[RunningHub] 静态立绘轮询第 ${attempts + 1} 次`, queryData);
-                    }
-
-                    // code 804 = APIKEY_TASK_IS_RUNNING，任务正在运行中，继续轮询
-                    if (isRunningHubTaskRunning(queryData)) {
-                        // 正常状态，继续等待
-                        await new Promise(resolve => setTimeout(resolve, 2000));
-                        attempts++;
-                        continue;
-                    }
-
-                    const failureMessage = getRunningHubFailureMessage(queryData);
-                    if (failureMessage) throw new Error(`任务状态错误: ${failureMessage}`);
-
-                    if (queryData.code === 0 && queryData.data) {
-                        // 尝试查找图片
-                        const foundImg = extractRunningHubImageUrl(queryData);
-                        if (foundImg) {
-                            imageUrl = foundImg;
-                            break;
-                        }
-
-                        if (isRunningHubSuccessStatus(queryData) && !imageUrl) {
-                            logger.debug("[RunningHub] 任务已成功但暂未解析到图片 URL，继续等待");
-                        }
-                    }
-                } catch (queryError: any) {
-                    const message = queryError?.message || '';
-                    if (message.includes('安审失败') || message.includes('任务状态错误') || message.includes('Generation Failed')) {
-                        throw queryError;
-                    }
-                    logger.warn(`[RunningHub] 静态立绘轮询第 ${attempts + 1} 次失败`, queryError);
-                }
-
-                if (imageUrl) break;
-                await new Promise(resolve => setTimeout(resolve, 2000));
-                attempts++;
-            }
-        }
-
-        if (!imageUrl) {
-            throw new Error("Image generation failed - no image returned");
-        }
-
-        return imageUrl;
-    };
-
-    // 检查队列状态
-    const queueStatus = getQueueStatus();
-    if (queueStatus.isProcessing || queueStatus.queueLength > 0) {
-        const waitCount = queueStatus.queueLength + (queueStatus.isProcessing ? 1 : 0);
-        setLoadingText(`契约编撰中...前方${waitCount}个灵魂`);
-        logger.debug(`[Static] 静态立绘任务等待队列，位置 ${queueStatus.queueLength + 1}`);
-    }
-
-    const staticQueueId = `static-${generatedInfo.name}-${Date.now()}`;
-
-    try {
-        await runningHubQueue.enqueue(staticQueueId, async () => {
-            const imageUrl = await attemptImageGeneration();
-
-            // --- Step D: Finish ---
-            if (imageUrl) {
-                stopProgressAnimation();
-                generatedInfo.imageUrl = imageUrl;
-                setLoadingText("正在显影...");
-                await new Promise((resolve) => {
-                    const img = new Image();
-                    img.onload = resolve;
-                    img.onerror = resolve;
-                    img.src = imageUrl;
-                    setTimeout(resolve, 5000);
-                });
-
-                await finalizeCharacter(generatedInfo);
-            } else {
-                throw new Error("No image URL found after processing.");
-            }
-        });
-
-    } catch (e: any) {
-        stopProgressAnimation();
-        logger.warn("Image Gen Error:", e);
-
-        // 增加连续失败计数
-        setConsecutiveFailures(prev => prev + 1);
-
-        // 生成失败，显示提示并回退到缔结契约界面
-        setLoadingText("召唤失败，请重试...");
-        await new Promise(r => setTimeout(r, 1500)); // 让用户看到失败提示
-
-        // 回退到 CONTRACT_PENDING 状态，让用户手动重新点击缔结契约
-        setGameState(GameState.CONTRACT_PENDING);
-    }
+    await generateContract(result, stylePrompt);
   };
 
   const startCharge = () => {
@@ -572,12 +263,13 @@ export default function App() {
 
   const handleReset = () => {
       playClickSound(); // 播放点击音效
+      cancelGeneration();
       setGameState(GameState.IDLE);
       setResult(null);
       setCharInfo(null);
       setWeightedDiceIndices([]);
       setFixedDiceIndices([]);
-      setVisualProgress(0);
+      resetProgress();
   };
 
   // 取消召唤确认弹框状态
@@ -586,6 +278,7 @@ export default function App() {
   // 取消缔结契约，回到掷骰子界面（保留骰子结果但允许重投）
   const handleCancelContract = () => {
       playClickSound(); // 播放点击音效
+      cancelGeneration();
       setShowCancelConfirm(false);
       setGameState(GameState.IDLE);
       setResult(null);
@@ -600,6 +293,7 @@ export default function App() {
   // 重投（未经过命运抉择时使用，无需确认）
   const handleReroll = () => {
       playClickSound(); // 播放点击音效
+      cancelGeneration();
       setGameState(GameState.IDLE);
       setResult(null);
       setWentThroughRewardChoice(false);
@@ -612,6 +306,7 @@ export default function App() {
   const handleFailureReset = () => {
       if (consecutiveFailures < 5) return;
       playClickSound(); // 播放点击音效
+      cancelGeneration();
 
       // 返还本次掷骰消耗的道具
       setInventory(prev => ({

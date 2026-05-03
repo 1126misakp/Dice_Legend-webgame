@@ -2,19 +2,18 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { CharacterInfo, SkillType } from '../types';
 import RarityParticles from './RarityParticles';
+import VoiceSlots from './VoiceSlots';
 import {
-  Shield, Zap, Sword, Lock, Star, Ban, Wand2, Target, Ghost, Sparkles,
+  Shield, Zap, Sword, Star, Wand2, Target, Ghost, Sparkles,
   Flame, Droplets, Wind, Mountain, Sun, Moon,
   Axe, Book, Circle, Crosshair, Feather, Hand, Swords, Gem, Flag,
-  Eye, EyeOff, Download, Loader2, AlertCircle, Volume2
+  Eye, EyeOff, Download, Loader2, AlertCircle
 } from 'lucide-react';
-import { runningHubQueue, getQueueStatus } from '../utils/runningHubQueue';
-import { playAudioData, getSkillTypesByRarity } from '../services/voiceService';
-import { ApiCapabilities, ApiKeys, DEFAULT_OPENROUTER_MODEL } from '../utils/apiKeyStore';
-import { proxyOpenRouterChat, proxyRunningHubOutputs, proxyRunningHubRun } from '../utils/apiClient';
-import { buildFallbackLivePrompt, buildLivePromptUserText, LIVE_SYSTEM_PROMPT } from '../utils/promptTemplates';
-import { extractRunningHubTaskId, extractRunningHubVideoUrl, getRunningHubFailureMessage, isRunningHubTaskRunning, isRunningHubSuccessStatus } from '../utils/runningHubResult';
+import { playAudioData } from '../services/voiceService';
+import { ApiCapabilities, ApiKeys } from '../utils/apiKeyStore';
 import { logger } from '../utils/logger';
+import { downloadMediaFile } from '../utils/mediaDownload';
+import { useLiveGeneration } from '../hooks/useLiveGeneration';
 
 interface Props {
   info: CharacterInfo;
@@ -26,13 +25,17 @@ interface Props {
 const CharacterCard: React.FC<Props> = ({ info, onClose, apiKeys, capabilities }) => {
   const [showFullArt, setShowFullArt] = useState(false);
 
-  // Live Video State
-  const [videoUrl, setVideoUrl] = useState<string | null>(info.videoUrl || null);
-  const [isLiveActive, setIsLiveActive] = useState(false); // Controls if video plays on card
-  const [isLiveGenerating, setIsLiveGenerating] = useState(false);
-  const [showLiveConfirm, setShowLiveConfirm] = useState(false);
-  const [queuePosition, setQueuePosition] = useState<number>(0); // 0 = not queued, 1+ = position in queue
-  const [queueTaskId, setQueueTaskId] = useState<string | null>(null);
+  const {
+    videoUrl,
+    isLiveActive,
+    isLiveGenerating,
+    showLiveConfirm,
+    queuePosition,
+    pendingQueueCount,
+    setShowLiveConfirm,
+    generateLiveVideo,
+    handleLiveClick
+  } = useLiveGeneration({ info, apiKeys, capabilities });
 
   // Full Art Interaction State
   const [isLongPressing, setIsLongPressing] = useState(false);
@@ -48,9 +51,6 @@ const CharacterCard: React.FC<Props> = ({ info, onClose, apiKeys, capabilities }
   const isSSR = info.rarity === 'SSR';
   const isSR = info.rarity === 'SR';
   const isR = info.rarity === 'R';
-
-  // 获取当前稀有度可用的技能类型
-  const availableSkillTypes = getSkillTypesByRarity(info.rarity);
 
   // 首次展示时自动播放出场语音
   useEffect(() => {
@@ -193,576 +193,7 @@ const CharacterCard: React.FC<Props> = ({ info, onClose, apiKeys, capabilities }
   const attrStyle = getAttrStyle(info.attribute);
   const AttrIcon = attrStyle.icon;
 
-  // 播放技能语音
-  const playSkillVoice = async (skillType: SkillType) => {
-    if (!info.voices?.voices) return;
-
-    const voiceData = info.voices.voices.find(v => v.skillType === skillType);
-    if (!voiceData) {
-      logger.debug('[Voice] 未找到语音数据', skillType);
-      return;
-    }
-
-    try {
-      setPlayingVoice(skillType);
-      logger.debug('[Voice] 播放语音', skillType, voiceData.line);
-      await playAudioData(voiceData.audioDataHex);
-    } catch (error) {
-      logger.error('[Voice] 播放失败', error);
-    } finally {
-      setPlayingVoice(null);
-    }
-  };
-
-  const renderActiveSlots = () => {
-      const slots = [];
-      const skillTypes: SkillType[] = ['skill1', 'skill2', 'skill3'];
-
-      for (let i = 0; i < 3; i++) {
-          const skillType = skillTypes[i];
-          const hasVoice = availableSkillTypes.includes(skillType) && info.voices?.voices?.some(v => v.skillType === skillType);
-          const isDisabled = !availableSkillTypes.includes(skillType);
-          const isPlaying = playingVoice === skillType;
-
-          slots.push(
-            <div key={`active-${i}`} className="relative">
-                <div
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (hasVoice && !isPlaying) playSkillVoice(skillType);
-                  }}
-                  className={`w-10 h-10 rounded-lg flex items-center justify-center border rotate-45 m-2 shadow-sm transition-all
-                    ${isDisabled
-                      ? 'border-slate-500/50 bg-slate-900/45 cursor-not-allowed'
-                      : hasVoice
-                        ? `border-blue-200/70 bg-blue-950/55 cursor-pointer hover:scale-110 hover:border-amber-200 hover:shadow-[0_0_16px_rgba(251,191,36,0.45)] ${isPlaying ? 'animate-pulse scale-110 border-amber-200 shadow-[0_0_18px_rgba(251,191,36,0.72)]' : ''}`
-                        : 'border-blue-200/55 bg-blue-950/45'
-                    } backdrop-blur-sm`}
-                >
-                    <div className="-rotate-45">
-                         {isDisabled
-                           ? <Ban size={16} className="text-slate-400" />
-                           : hasVoice
-                             ? <Volume2 size={16} className={`${isPlaying ? 'text-amber-100 animate-pulse' : 'text-blue-100'}`} />
-                             : <Lock size={16} className="text-blue-100" />
-                         }
-                    </div>
-                </div>
-                {hasVoice && (
-                  <div className="absolute -bottom-2 left-1/2 -translate-x-1/2">
-                    <span className="text-[6px] text-amber-200/85 whitespace-nowrap">技能{i+1}</span>
-                  </div>
-                )}
-            </div>
-          );
-      }
-      return slots;
-  };
-
-  const renderPassiveSlots = () => {
-    const slots = [];
-    const passiveCount = isUR ? 2 : 1;
-    for (let i = 0; i < passiveCount; i++) {
-        const unavailable = !isUR && !isSSR && !isSR; 
-        slots.push(
-            <div key={`passive-${i}`} className="relative group">
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center border ${unavailable ? 'border-slate-500/50 bg-slate-900/45' : 'border-amber-200/70 bg-amber-950/45'} backdrop-blur-sm shadow-sm`}>
-                    {unavailable ? <Ban size={12} className="text-slate-400" /> : <Lock size={12} className="text-amber-200" />}
-                </div>
-            </div>
-        );
-    }
-    return slots;
-  };
-
-  const renderUltimateSlot = () => {
-    const hasVoice = info.voices?.voices?.some(v => v.skillType === 'ultimate');
-    const isPlaying = playingVoice === 'ultimate';
-
-    return (
-      <div className="relative group mx-1">
-          <div
-            onClick={(e) => {
-              e.stopPropagation();
-              if (hasVoice && !isPlaying) playSkillVoice('ultimate');
-            }}
-            className={`w-14 h-14 rounded-full flex items-center justify-center border-2 backdrop-blur-md transition-all
-              ${hasVoice
-                ? `border-amber-200/80 bg-purple-950/50 cursor-pointer hover:scale-105 hover:border-amber-100 hover:shadow-[0_0_25px_rgba(251,191,36,0.7)] ${isPlaying ? 'animate-pulse scale-105 border-amber-100 shadow-[0_0_30px_rgba(251,191,36,0.95)]' : 'shadow-[0_0_15px_rgba(168,85,247,0.5)]'}`
-                : 'border-amber-200/65 bg-purple-950/50 shadow-[0_0_15px_rgba(168,85,247,0.45)]'
-              }`}
-          >
-              {hasVoice
-                ? <Volume2 size={20} className={`${isPlaying ? 'text-amber-100 animate-pulse' : 'text-purple-100'}`} />
-                : <Lock size={20} className="text-purple-100" />
-              }
-          </div>
-          <div className="absolute -bottom-1 w-full text-center">
-               <span className="text-[8px] bg-[#27113f]/90 px-1.5 py-0.5 rounded-full text-amber-100 border border-amber-300/40 shadow-sm">奥义</span>
-          </div>
-      </div>
-    );
-  };
-
-  // --- API / LIVE Logic ---
-  const generateLiveVideo = async () => {
-      if (!capabilities.runningHub || !apiKeys.runningHub.trim()) {
-          alert('未配置 RunningHub API Key，无法生成动态化视频。');
-          return;
-      }
-      if (!info.imageUrl) {
-          alert('当前角色没有立绘，无法生成动态化视频。');
-          return;
-      }
-      setShowLiveConfirm(false);
-      setIsLiveGenerating(true);
-
-      // 生成唯一的队列任务ID
-      const localQueueId = `live-${info.name}-${Date.now()}`;
-      setQueueTaskId(localQueueId);
-
-      // 检查队列状态
-      const status = getQueueStatus();
-      if (status.isProcessing || status.queueLength > 0) {
-          setQueuePosition(status.queueLength + 1);
-          logger.debug(`[Live] 动态化任务排队，位置 ${status.queueLength + 1}`);
-      }
-
-      // 将任务加入队列
-      try {
-          await runningHubQueue.enqueue(localQueueId, async () => {
-              // 当轮到这个任务执行时
-              setQueuePosition(0);
-              logger.debug(`[Live] 动态化任务 ${localQueueId} 开始执行`);
-
-              // 实际的 API 调用逻辑
-              await executeVideoGeneration();
-          });
-      } catch (e: any) {
-          logger.error("Live Gen Error", e);
-          alert(`动态化生成失败: ${e.message || '请稍后重试'}`);
-      } finally {
-          setIsLiveGenerating(false);
-          setQueueTaskId(null);
-          setQueuePosition(0);
-      }
-  };
-
-  // 实际执行视频生成的内部函数
-  const executeVideoGeneration = async () => {
-      const namePart = info.name.split('·')[0];
-
-      // Step 1: 使用 grok-4.1-fast 生成 LIVE 动画提示词（多模态图片理解）
-      logger.info("[Live] 开始生成动态化提示词");
-
-      const characterInfoText = buildLivePromptUserText(info);
-
-      let liveAnimationPrompt = "";
-
-      try {
-          if (!capabilities.openRouter || !apiKeys.openRouter.trim()) {
-              throw new Error('未配置 OpenRouter API Key');
-          }
-          // 使用 grok-4.1-fast 进行多模态图片理解
-          const grokData = await proxyOpenRouterChat(apiKeys.openRouter, {
-              model: apiKeys.openRouterModel || DEFAULT_OPENROUTER_MODEL,
-              messages: [
-                  { role: "system", content: LIVE_SYSTEM_PROMPT },
-                  {
-                      role: "user",
-                      content: [
-                          {
-                              type: "image_url",
-                              image_url: { url: info.imageUrl }
-                          },
-                          {
-                              type: "text",
-                              text: characterInfoText
-                          }
-                      ]
-                  }
-              ],
-              max_tokens: 10000,
-              temperature: 0.8
-          });
-          const rawContent = grokData.choices?.[0]?.message?.content || "";
-
-          // 清理提示词
-          let cleanedContent = rawContent.replace(/```[\s\S]*?```/g, '').replace(/`/g, '').trim();
-
-          logger.debug("[Live] OpenRouter 返回内容长度", cleanedContent.length);
-
-          // 提取中文动态脚本部分（去掉标题和英文Video Prompt部分）
-          // 尝试多种提取方式
-
-          // 方式1: 查找 "### 动态脚本设计" 或 "[动态脚本]" 后面的中文内容
-          let chineseScript = "";
-
-          // 尝试匹配 "### 动态脚本设计" 或 "(Action Storyboard)" 后的内容
-          const storyboardMatch = cleanedContent.match(/(?:###\s*动态脚本设计[^\n]*\n?(?:\(Action Storyboard\)\n?)?|【动态脚本】|\[动态脚本\])\s*([\s\S]*?)(?=###\s*AI Video Prompt|【Video Prompt】|\[Video Prompt\]|$)/i);
-
-          if (storyboardMatch && storyboardMatch[1]) {
-              chineseScript = storyboardMatch[1].trim();
-          } else {
-              // 方式2: 提取所有包含中文的连续段落（排除纯英文行）
-              const lines = cleanedContent.split('\n');
-              const chineseLines: string[] = [];
-              let foundChinese = false;
-
-              for (const line of lines) {
-                  // 检查是否包含中文字符
-                  const hasChinese = /[\u4e00-\u9fa5]/.test(line);
-                  // 检查是否是标题行（以#或[开头）
-                  const isTitle = /^[#\[【]/.test(line.trim());
-                  // 检查是否是英文Video Prompt开始
-                  const isEnglishPrompt = /^[\(\[]?[a-zA-Z]/.test(line.trim()) && !hasChinese;
-
-                  if (hasChinese && !isTitle) {
-                      foundChinese = true;
-                      chineseLines.push(line.trim());
-                  } else if (foundChinese && isEnglishPrompt) {
-                      // 遇到英文提示词，停止提取
-                      break;
-                  }
-              }
-
-              chineseScript = chineseLines.join('');
-          }
-
-          // 如果提取失败，使用原始内容
-          if (!chineseScript || chineseScript.length < 20) {
-              logger.warn("[Live] 未能提取中文动态脚本，使用完整返回内容");
-              liveAnimationPrompt = cleanedContent;
-          } else {
-              liveAnimationPrompt = chineseScript;
-          }
-
-          logger.debug("[Live] 动态脚本提取完成", liveAnimationPrompt);
-
-      } catch (grokError) {
-          logger.warn("[Live] OpenRouter 动态提示词失败，使用本地兜底", grokError);
-          liveAnimationPrompt = buildFallbackLivePrompt(info.rarity);
-      }
-
-      // Step 2: 调用新的 RunningHub API
-      logger.info("[Live] 提交 RunningHub 动态化任务");
-
-      const data = await proxyRunningHubRun(apiKeys.runningHub, {
-          "webappId": "2004562821612535810",
-          "nodeInfoList": [
-              {
-                  "nodeId": "45",
-                  "fieldName": "text",
-                  "fieldValue": liveAnimationPrompt,
-                  "description": "LIVE动画完整提示词"
-              },
-              {
-                  "nodeId": "46",
-                  "fieldName": "text",
-                  "fieldValue": namePart,
-                  "description": "角色姓名"
-              },
-              {
-                  "nodeId": "39",
-                  "fieldName": "url",
-                  "fieldValue": info.imageUrl,
-                  "description": "角色立绘"
-              }
-          ]
-      });
-      if (data.code !== 0) throw new Error(data.msg || "API Error");
-
-      let taskId = extractRunningHubTaskId(data);
-      if (!taskId) throw new Error("No Task ID returned");
-
-      logger.info("[Live] RunningHub 动态化任务已启动");
-
-      // Polling Loop - wait for task completion and result
-      let videoResultUrl = "";
-      let attempts = 0;
-      let consecutiveErrors = 0;
-      let lastStatus = "";
-
-      // 增加轮询次数和间隔适应性调整
-      const MAX_ATTEMPTS = 200; // 增加到200次
-      const POLL_INTERVAL_INITIAL = 3000; // 初始3秒
-      const POLL_INTERVAL_LONG = 5000;    // 长时间后5秒
-
-      logger.info(`[Live] 开始轮询动态化任务，最多 ${MAX_ATTEMPTS} 次`);
-
-      while (!videoResultUrl && attempts < MAX_ATTEMPTS) {
-          // 动态调整轮询间隔：前50次3秒，之后5秒
-          const pollInterval = attempts < 50 ? POLL_INTERVAL_INITIAL : POLL_INTERVAL_LONG;
-          await new Promise(r => setTimeout(r, pollInterval));
-
-          try {
-              const qData = await proxyRunningHubOutputs(apiKeys.runningHub, taskId);
-              consecutiveErrors = 0; // 重置错误计数
-
-              // 记录每10次或状态变化时的日志
-              const currentStatus = `code:${qData.code},status:${qData.data?.status || 'N/A'}`;
-              if (attempts % 10 === 0 || currentStatus !== lastStatus) {
-                  logger.debug(`[Live] 动态化轮询第 ${attempts + 1} 次：${currentStatus}`, qData);
-                  lastStatus = currentStatus;
-              }
-
-              // code 804: 任务正在运行中
-              if (isRunningHubTaskRunning(qData)) {
-                  attempts++;
-                  continue;
-              }
-
-              const failureMessage = getRunningHubFailureMessage(qData);
-              if (failureMessage) throw new Error(`任务状态错误: ${failureMessage}`);
-
-              // code 0: 任务完成或有结果
-              if (qData.code === 0 && qData.data) {
-                  videoResultUrl = extractRunningHubVideoUrl(qData, info.imageUrl) || "";
-
-                  // 如果状态是成功但没找到URL，继续轮询（可能结果还在处理）
-                  if (!videoResultUrl && isRunningHubSuccessStatus(qData)) {
-                      logger.debug("[Live] 任务已成功但暂未解析到视频 URL，继续等待");
-                      // 不立即报错，再等几次
-                      if (attempts > MAX_ATTEMPTS - 10) {
-                          logger.warn("[Live] 接近最大轮询次数，成功状态下仍未解析到视频 URL");
-                      }
-                  }
-              }
-
-              // 其他未知 code
-              if (qData.code !== 0 && qData.code !== 804) {
-                  logger.warn(`[Live] 未知 RunningHub 返回码 ${qData.code}: ${qData.msg}`);
-              }
-
-          } catch (fetchError: any) {
-              if (fetchError.message?.includes('生成失败') || fetchError.message?.includes('内容审核') || fetchError.message?.includes('任务状态错误')) {
-                  throw fetchError; // 直接抛出明确的失败
-              }
-              logger.warn(`[Live] 动态化轮询第 ${attempts + 1} 次失败`, fetchError);
-              consecutiveErrors++;
-              if (consecutiveErrors >= 15) {
-                  throw fetchError;
-              }
-          }
-
-          attempts++;
-      }
-
-      // 轮询结束后的处理
-      if (videoResultUrl) {
-          logger.info("[Live] 动态化视频生成成功");
-          setVideoUrl(videoResultUrl);
-          setIsLiveActive(true);
-          info.videoUrl = videoResultUrl;
-      } else {
-          // 最终尝试
-          logger.info("[Live] 轮询结束未解析到结果，执行最终查询");
-          await new Promise(r => setTimeout(r, 5000));
-
-          try {
-              const finalData = await proxyRunningHubOutputs(apiKeys.runningHub, taskId);
-              logger.debug("[Live] 最终查询返回", finalData);
-              const finalVideo = extractRunningHubVideoUrl(finalData, info.imageUrl);
-              if (finalVideo) {
-                  setVideoUrl(finalVideo);
-                  setIsLiveActive(true);
-                  info.videoUrl = finalVideo;
-                  return;
-              }
-          } catch (finalError) {
-              logger.warn('[Live] 最终查询失败', finalError);
-          }
-
-          throw new Error(`动态化生成超时（${attempts}次轮询）。任务可能仍在服务器处理中。\n任务ID: ${taskId}`);
-      }
-  };
-
-  const handleLiveClick = (e: React.MouseEvent) => {
-      e.stopPropagation();
-      if (isLiveGenerating) return;
-
-      if (!videoUrl) {
-          // Case 1: No video yet -> Ask to generate
-          setShowLiveConfirm(true);
-      } else {
-          // Case 2: Has video -> Toggle playback
-          setIsLiveActive(!isLiveActive);
-      }
-  };
-
   const [isDownloading, setIsDownloading] = useState(false);
-
-  const downloadFile = async (url: string, filename: string): Promise<boolean> => {
-      console.log('[Download] Attempting to download:', url, 'as', filename);
-
-      // 确保URL正确编码（处理中文路径）
-      let encodedUrl = url;
-      try {
-          if (/[\u4e00-\u9fa5]/.test(url)) {
-              const urlObj = new URL(url);
-              urlObj.pathname = urlObj.pathname.split('/').map(segment =>
-                  /[\u4e00-\u9fa5]/.test(segment) ? encodeURIComponent(segment) : segment
-              ).join('/');
-              encodedUrl = urlObj.toString();
-              console.log('[Download] Encoded URL:', encodedUrl);
-          }
-      } catch (e) {
-          console.log('[Download] URL encoding failed, using original:', e);
-      }
-
-      // 根据文件名确定MIME类型
-      const getMimeType = (fname: string): string => {
-          const ext = fname.split('.').pop()?.toLowerCase();
-          const mimeTypes: Record<string, string> = {
-              'png': 'image/png',
-              'jpg': 'image/jpeg',
-              'jpeg': 'image/jpeg',
-              'gif': 'image/gif',
-              'webp': 'image/webp',
-              'mp4': 'video/mp4',
-              'webm': 'video/webm'
-          };
-          return mimeTypes[ext || ''] || 'application/octet-stream';
-      };
-
-      // 辅助函数：将ArrayBuffer转换为Base64
-      const arrayBufferToBase64 = (buffer: ArrayBuffer): string => {
-          const bytes = new Uint8Array(buffer);
-          let binary = '';
-          for (let i = 0; i < bytes.byteLength; i++) {
-              binary += String.fromCharCode(bytes[i]);
-          }
-          return btoa(binary);
-      };
-
-      // 辅助函数：使用Data URL触发下载（完全内联，无跨域问题）
-      const triggerDownloadWithFile = (arrayBuffer: ArrayBuffer, fname: string, mimeType: string) => {
-          // 转换为base64 data URL
-          const base64 = arrayBufferToBase64(arrayBuffer);
-          const dataUrl = `data:${mimeType};base64,${base64}`;
-
-          const link = document.createElement('a');
-          link.href = dataUrl;
-          link.download = fname;
-          link.style.display = 'none';
-          document.body.appendChild(link);
-          link.click();
-
-          setTimeout(() => {
-              document.body.removeChild(link);
-          }, 3000);
-
-          console.log('[Download] Triggered with Data URL, filename:', fname);
-      };
-
-      // 方法1: 通过 fetch + File对象 下载
-      try {
-          const response = await fetch(encodedUrl, {
-              mode: 'cors',
-              credentials: 'omit'
-          });
-          if (response.ok) {
-              const arrayBuffer = await response.arrayBuffer();
-              console.log('[Download] ArrayBuffer size:', arrayBuffer.byteLength);
-
-              if (arrayBuffer.byteLength > 0) {
-                  const mimeType = getMimeType(filename);
-                  console.log('[Download] Using File object with name:', filename, 'type:', mimeType);
-                  triggerDownloadWithFile(arrayBuffer, filename, mimeType);
-                  console.log('[Download] Success via fetch + File');
-                  return true;
-              } else {
-                  console.log('[Download] ArrayBuffer is empty');
-              }
-          } else {
-              console.log('[Download] Fetch response not ok:', response.status);
-          }
-      } catch (e) {
-          console.log('[Download] Fetch failed:', e);
-      }
-
-      // 方法2: 对于图片，尝试使用 canvas 方法
-      const isImage = /\.(png|jpg|jpeg|webp|gif)(\?.*)?$/i.test(url) || /\/output\//i.test(url);
-      if (isImage) {
-          console.log('[Download] Trying canvas method for image');
-          try {
-              const success = await new Promise<boolean>((resolve) => {
-                  const img = new Image();
-                  img.crossOrigin = 'anonymous';
-                  img.onload = async () => {
-                      try {
-                          const canvas = document.createElement('canvas');
-                          canvas.width = img.naturalWidth;
-                          canvas.height = img.naturalHeight;
-                          console.log('[Download] Canvas size:', canvas.width, 'x', canvas.height);
-                          const ctx = canvas.getContext('2d');
-                          if (ctx) {
-                              ctx.drawImage(img, 0, 0);
-                              canvas.toBlob(async (blob) => {
-                                  if (blob && blob.size > 0) {
-                                      const arrayBuffer = await blob.arrayBuffer();
-                                      triggerDownloadWithFile(arrayBuffer, filename, 'image/png');
-                                      console.log('[Download] Success via canvas');
-                                      resolve(true);
-                                  } else {
-                                      console.log('[Download] Canvas blob empty');
-                                      resolve(false);
-                                  }
-                              }, 'image/png');
-                          } else {
-                              resolve(false);
-                          }
-                      } catch (err) {
-                          console.log('[Download] Canvas draw error:', err);
-                          resolve(false);
-                      }
-                  };
-                  img.onerror = (err) => {
-                      console.log('[Download] Image load error:', err);
-                      resolve(false);
-                  };
-                  img.src = encodedUrl;
-              });
-              if (success) return true;
-          } catch (e) {
-              console.log('[Download] Canvas method failed:', e);
-          }
-      }
-
-      // 方法3: 使用页面中已加载的图片
-      try {
-          const existingImg = document.querySelector(`img[src="${url}"], img[src="${encodedUrl}"]`) as HTMLImageElement;
-          if (existingImg && existingImg.complete && existingImg.naturalWidth > 0) {
-              console.log('[Download] Using existing image from DOM');
-              const canvas = document.createElement('canvas');
-              canvas.width = existingImg.naturalWidth;
-              canvas.height = existingImg.naturalHeight;
-              const ctx = canvas.getContext('2d');
-              if (ctx) {
-                  ctx.drawImage(existingImg, 0, 0);
-                  const dataUrl = canvas.toDataURL('image/png');
-                  // 将dataUrl转换为ArrayBuffer
-                  const base64 = dataUrl.split(',')[1];
-                  const binaryString = atob(base64);
-                  const bytes = new Uint8Array(binaryString.length);
-                  for (let i = 0; i < binaryString.length; i++) {
-                      bytes[i] = binaryString.charCodeAt(i);
-                  }
-                  triggerDownloadWithFile(bytes.buffer, filename, 'image/png');
-                  console.log('[Download] Success via existing image');
-                  return true;
-              }
-          }
-      } catch (e) {
-          console.log('[Download] Existing image method failed:', e);
-      }
-
-      // 方法4: 最后的 fallback - 打开新窗口让用户手动右键保存
-      console.log('[Download] All automatic methods failed, opening in new tab for manual save');
-      alert('自动下载失败，将在新窗口打开图片，请右键选择"另存为"保存图片。');
-      window.open(encodedUrl, '_blank');
-      return false;
-  };
 
   const downloadAll = async (e: React.MouseEvent) => {
       e.stopPropagation();
@@ -770,18 +201,16 @@ const CharacterCard: React.FC<Props> = ({ info, onClose, apiKeys, capabilities }
 
       setIsDownloading(true);
       const safeName = info.name.replace(/\s+/g, '_').replace(/·/g, '_');
-      console.log('[Download] Starting download for:', safeName);
-      console.log('[Download] Image URL:', info.imageUrl);
-      console.log('[Download] Video URL:', videoUrl);
+      logger.debug('[Download] 开始下载角色媒体', safeName);
 
       try {
           // 下载图片
-          await downloadFile(info.imageUrl, `${safeName}.png`);
+          await downloadMediaFile(info.imageUrl, `${safeName}.png`);
 
           // 如果有视频，延迟一下再下载（避免浏览器阻止多个下载）
           if (videoUrl) {
               await new Promise(r => setTimeout(r, 500));
-              await downloadFile(videoUrl, `${safeName}_live.mp4`);
+              await downloadMediaFile(videoUrl, `${safeName}_live.mp4`);
           }
       } finally {
           setIsDownloading(false);
@@ -934,18 +363,11 @@ const CharacterCard: React.FC<Props> = ({ info, onClose, apiKeys, capabilities }
                     </div>
                     <h3 className="text-lg font-black text-[#71410f] font-serif">启动动态化契约？</h3>
                     <p className="text-sm text-[#5b3a18]">角色动态化需要较长等待时间（约1-3分钟），请耐心等候。</p>
-                    {(() => {
-                        const status = getQueueStatus();
-                        if (status.isProcessing || status.queueLength > 0) {
-                            const waitCount = status.queueLength + (status.isProcessing ? 1 : 0);
-                            return (
-                                <p className="text-xs text-amber-900 bg-amber-950/10 px-3 py-1.5 rounded-lg border border-amber-900/15">
-                                    当前有 {waitCount} 个任务在队列中，您的任务将排队等待
-                                </p>
-                            );
-                        }
-                        return null;
-                    })()}
+                    {pendingQueueCount > 0 && (
+                        <p className="text-xs text-amber-900 bg-amber-950/10 px-3 py-1.5 rounded-lg border border-amber-900/15">
+                            当前有 {pendingQueueCount} 个任务在队列中，您的任务将排队等待
+                        </p>
+                    )}
                     <div className="flex gap-3 w-full mt-2">
                         <button
                             onClick={() => setShowLiveConfirm(false)}
@@ -1233,17 +655,8 @@ const CharacterCard: React.FC<Props> = ({ info, onClose, apiKeys, capabilities }
                     </div>
                 </div>
 
-                <div className="flex items-center mb-3 min-w-0">
-                    <div className="flex items-center -space-x-1 mr-1">
-                        {renderActiveSlots()}
-                    </div>
-                    {renderUltimateSlot()}
-                    <div className="flex flex-col gap-1 items-end ml-auto">
-                        <span className="text-[8px] text-amber-100/60 uppercase tracking-widest font-bold">被动</span>
-                        <div className="flex gap-1">
-                            {renderPassiveSlots()}
-                        </div>
-                    </div>
+                <div className="mb-3 min-w-0">
+                    <VoiceSlots info={info} isUR={isUR} isSSR={isSSR} isSR={isSR} />
                 </div>
                 {!capabilities.miniMax && (
                     <div className="mb-3 rounded-lg border border-amber-200/18 bg-black/30 px-3 py-2 text-[10px] text-amber-100/72">

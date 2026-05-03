@@ -17,6 +17,17 @@ export default defineConfig(() => {
         strictPort: true,
       },
       plugins: [react()],
+      build: {
+        rollupOptions: {
+          output: {
+            manualChunks: {
+              react: ['react', 'react-dom'],
+              three: ['three'],
+              physics: ['cannon-es']
+            }
+          }
+        }
+      },
       resolve: {
         alias: {
           '@': path.resolve(__dirname, '.'),

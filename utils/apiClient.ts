@@ -24,6 +24,7 @@ type ProxyResponse<T> = ProxySuccess<T> | ProxyFailure;
 
 export interface ApiClientOptions {
   timeoutMs?: number;
+  signal?: AbortSignal;
 }
 
 const DEFAULT_TIMEOUT_MS = 30000;
@@ -43,9 +44,19 @@ async function callProxy<T>(endpoint: ApiEndpoint, apiKey: string, body: unknown
     throw new ApiClientError('缺少对应的 API Key', 'MISSING_API_KEY');
   }
 
+  if (options.signal?.aborted) {
+    throw new ApiClientError('请求已取消', 'REQUEST_CANCELLED');
+  }
+
   const controller = new AbortController();
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const timeoutId = globalThis.setTimeout(() => controller.abort(), timeoutMs);
+  let isTimeout = false;
+  const timeoutId = globalThis.setTimeout(() => {
+    isTimeout = true;
+    controller.abort();
+  }, timeoutMs);
+  const abortFromExternalSignal = () => controller.abort();
+  options.signal?.addEventListener('abort', abortFromExternalSignal, { once: true });
 
   let response: Response;
   try {
@@ -60,11 +71,15 @@ async function callProxy<T>(endpoint: ApiEndpoint, apiKey: string, body: unknown
     });
   } catch (error) {
     if ((error as Error).name === 'AbortError') {
+      if (!isTimeout) {
+        throw new ApiClientError('请求已取消', 'REQUEST_CANCELLED');
+      }
       throw new ApiClientError(`请求超时（${Math.round(timeoutMs / 1000)}秒无响应）`, 'REQUEST_TIMEOUT');
     }
     throw error;
   } finally {
     globalThis.clearTimeout(timeoutId);
+    options.signal?.removeEventListener('abort', abortFromExternalSignal);
   }
 
   let payload: ProxyResponse<T> | null = null;

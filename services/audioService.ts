@@ -2,6 +2,7 @@
  * 音效服务 - 纹章传说
  * 使用 Web Audio API 合成音效，无需外部音效文件
  */
+import { logger } from '../utils/logger';
 
 // 音效ID枚举
 export type SoundId =
@@ -49,9 +50,9 @@ class AudioService {
     try {
       this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
       this.isInitialized = true;
-      console.log('[AudioService] Initialized with Web Audio API');
+      logger.info('[AudioService] Web Audio API 初始化完成');
     } catch (error) {
-      console.error('[AudioService] Initialization failed:', error);
+      logger.error('[AudioService] 初始化失败', error);
     }
   }
 
@@ -298,4 +299,3 @@ export const audioService = AudioService.getInstance();
 
 // 默认导出
 export default audioService;
-
