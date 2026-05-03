@@ -6,14 +6,28 @@ export interface Env {
 
 type ProxyTarget = {
   url: string;
+  validatePayload: (payload: Record<string, unknown>) => void;
   buildRequest: (payload: Record<string, unknown>, apiKey: string) => RequestInit;
 };
 
 const MAX_BODY_BYTES = 64 * 1024;
 
+class ProxyRequestError extends Error {
+  code: string;
+  status: number;
+
+  constructor(code: string, message: string, status: number) {
+    super(message);
+    this.name = 'ProxyRequestError';
+    this.code = code;
+    this.status = status;
+  }
+}
+
 const targets: Record<string, ProxyTarget> = {
   '/api/openrouter/chat': {
     url: 'https://openrouter.ai/api/v1/chat/completions',
+    validatePayload: validateOpenRouterPayload,
     buildRequest: (payload, apiKey) => ({
       method: 'POST',
       headers: {
@@ -25,6 +39,7 @@ const targets: Record<string, ProxyTarget> = {
   },
   '/api/runninghub/run': {
     url: 'https://www.runninghub.cn/task/openapi/ai-app/run',
+    validatePayload: validateRunningHubRunPayload,
     buildRequest: (payload, apiKey) => ({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -37,6 +52,7 @@ const targets: Record<string, ProxyTarget> = {
   },
   '/api/runninghub/outputs': {
     url: 'https://www.runninghub.cn/task/openapi/outputs',
+    validatePayload: validateRunningHubOutputsPayload,
     buildRequest: (payload, apiKey) => ({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -48,6 +64,7 @@ const targets: Record<string, ProxyTarget> = {
   },
   '/api/minimax/voice-design': {
     url: 'https://api.minimaxi.com/v1/voice_design',
+    validatePayload: validateMiniMaxVoiceDesignPayload,
     buildRequest: (payload, apiKey) => ({
       method: 'POST',
       headers: {
@@ -59,6 +76,7 @@ const targets: Record<string, ProxyTarget> = {
   },
   '/api/minimax/t2a': {
     url: 'https://api.minimaxi.com/v1/t2a_v2',
+    validatePayload: validateMiniMaxT2APayload,
     buildRequest: (payload, apiKey) => ({
       method: 'POST',
       headers: {
@@ -98,6 +116,8 @@ export default {
         return jsonError(request, 'MISSING_API_KEY', '缺少对应的 API Key', 400);
       }
 
+      target.validatePayload(payload);
+
       const startedAt = Date.now();
       const upstream = await fetch(target.url, target.buildRequest(payload, apiKey));
       const contentType = upstream.headers.get('Content-Type') || '';
@@ -114,6 +134,10 @@ export default {
 
       return jsonResponse(request, { ok: true, data }, 200);
     } catch (error) {
+      if (error instanceof ProxyRequestError) {
+        return jsonError(request, error.code, error.message, error.status);
+      }
+
       const message = error instanceof Error ? error.message : '代理请求失败';
       return jsonError(request, 'PROXY_ERROR', message, 500);
     }
@@ -145,13 +169,22 @@ function validateRequest(request: Request): { code: string; message: string; sta
 
 async function readJsonBody(request: Request): Promise<Record<string, unknown>> {
   const body = await request.text();
-  if (body.length > MAX_BODY_BYTES) {
-    throw new Error('请求体过大');
+
+  if (new TextEncoder().encode(body).byteLength > MAX_BODY_BYTES) {
+    throw new ProxyRequestError('PAYLOAD_TOO_LARGE', '请求体过大', 413);
   }
-  const parsed: unknown = body ? JSON.parse(body) : {};
+
+  let parsed: unknown;
+  try {
+    parsed = body ? JSON.parse(body) : {};
+  } catch {
+    throw new ProxyRequestError('INVALID_JSON', '请求体不是合法 JSON', 400);
+  }
+
   if (!isRecord(parsed)) {
-    throw new Error('请求体必须是 JSON 对象');
+    throw new ProxyRequestError('INVALID_JSON', '请求体必须是 JSON 对象', 400);
   }
+
   return parsed;
 }
 
@@ -206,6 +239,114 @@ function pick(source: Record<string, unknown>, keys: string[]): Record<string, u
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function validateOpenRouterPayload(payload: Record<string, unknown>): void {
+  requireNonEmptyString(payload.model, 'model');
+  const messages = requireNonEmptyArray(payload.messages, 'messages');
+
+  for (const message of messages) {
+    const chatMessage = requireRecord(message, 'messages[]');
+    requireNonEmptyString(chatMessage.role, 'messages[].role');
+    validateOpenRouterMessageContent(chatMessage.content, 'messages[].content');
+  }
+
+  if (payload.max_tokens !== undefined && !isFiniteNumber(payload.max_tokens)) {
+    throwInvalidPayload('max_tokens 必须是数字');
+  }
+  if (payload.temperature !== undefined && !isFiniteNumber(payload.temperature)) {
+    throwInvalidPayload('temperature 必须是数字');
+  }
+}
+
+function validateOpenRouterMessageContent(content: unknown, fieldName: string): void {
+  if (isNonEmptyString(content)) return;
+
+  if (Array.isArray(content) && content.length > 0) {
+    for (const part of content) {
+      requireRecord(part, `${fieldName}[]`);
+      requireNonEmptyString(part.type, `${fieldName}[].type`);
+      if (part.type === 'text') {
+        requireNonEmptyString(part.text, `${fieldName}[].text`);
+      } else if (part.type === 'image_url') {
+        if (isNonEmptyString(part.image_url)) continue;
+        const imageUrl = requireRecord(part.image_url, `${fieldName}[].image_url`);
+        requireNonEmptyString(imageUrl.url, `${fieldName}[].image_url.url`);
+      }
+    }
+    return;
+  }
+
+  throwInvalidPayload(`${fieldName} 必须是非空字符串或非空多模态数组`);
+}
+
+function validateRunningHubRunPayload(payload: Record<string, unknown>): void {
+  requireNonEmptyString(payload.webappId, 'webappId');
+  const nodeInfoList = requireNonEmptyArray(payload.nodeInfoList, 'nodeInfoList');
+
+  for (const nodeInfo of nodeInfoList) {
+    const node = requireRecord(nodeInfo, 'nodeInfoList[]');
+    requireNonEmptyString(node.nodeId, 'nodeInfoList[].nodeId');
+    requireNonEmptyString(node.fieldName, 'nodeInfoList[].fieldName');
+    if (node.fieldValue === undefined) {
+      throwInvalidPayload('nodeInfoList[].fieldValue 不能为空');
+    }
+  }
+}
+
+function validateRunningHubOutputsPayload(payload: Record<string, unknown>): void {
+  requireNonEmptyString(payload.taskId, 'taskId');
+}
+
+function validateMiniMaxVoiceDesignPayload(payload: Record<string, unknown>): void {
+  requireNonEmptyString(payload.prompt, 'prompt');
+  requireNonEmptyString(payload.preview_text, 'preview_text');
+  if (payload.aigc_watermark !== undefined && typeof payload.aigc_watermark !== 'boolean') {
+    throwInvalidPayload('aigc_watermark 必须是布尔值');
+  }
+}
+
+function validateMiniMaxT2APayload(payload: Record<string, unknown>): void {
+  requireNonEmptyString(payload.model, 'model');
+  requireNonEmptyString(payload.text, 'text');
+  if (payload.stream !== undefined && typeof payload.stream !== 'boolean') {
+    throwInvalidPayload('stream 必须是布尔值');
+  }
+  requireRecord(payload.voice_setting, 'voice_setting');
+  requireRecord(payload.audio_setting, 'audio_setting');
+}
+
+function requireRecord(value: unknown, fieldName: string): Record<string, unknown> {
+  if (!isRecord(value)) {
+    throwInvalidPayload(`${fieldName} 必须是对象`);
+  }
+  return value;
+}
+
+function requireNonEmptyString(value: unknown, fieldName: string): string {
+  if (!isNonEmptyString(value)) {
+    throwInvalidPayload(`${fieldName} 必须是非空字符串`);
+  }
+  return value;
+}
+
+function requireNonEmptyArray(value: unknown, fieldName: string): unknown[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    throwInvalidPayload(`${fieldName} 必须是非空数组`);
+  }
+  return value;
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function throwInvalidPayload(message: string): never {
+  throw new ProxyRequestError('INVALID_PAYLOAD', message, 400);
 }
 
 function normalizeUpstreamError(data: unknown, status: number): string {

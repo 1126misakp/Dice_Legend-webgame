@@ -477,8 +477,8 @@ export default function App() {
 
       {/* 左上工具区，角色卡展示时隐藏 */}
       {gameState !== GameState.SHOW_CARD && (
-        <div className={`absolute top-3 left-3 right-3 md:top-6 md:left-6 md:right-auto z-40 flex flex-wrap items-start gap-2 md:gap-3 transition-all duration-500 ${peekMode ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
-            <div className="academy-glass backdrop-blur-xl p-3 md:p-4 rounded-xl md:rounded-2xl flex items-center gap-3 md:gap-4 max-w-full">
+        <div className={`absolute top-3 left-3 right-3 md:top-6 md:left-6 md:right-auto z-40 flex flex-wrap items-start gap-2 md:gap-3 max-w-[calc(100vw-1.5rem)] transition-all duration-500 ${peekMode ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+            <div className="academy-glass backdrop-blur-xl p-2.5 md:p-4 rounded-xl md:rounded-2xl flex items-center gap-2.5 md:gap-4 max-w-full min-w-0">
             <button 
                 onClick={() => setIsStyleOpen(!isStyleOpen)}
                 className={`w-10 h-10 md:w-11 md:h-11 rounded-xl transition-all flex items-center justify-center shrink-0 border ${isStyleOpen ? 'bg-amber-500 text-slate-950 border-amber-200 shadow-lg scale-105' : 'bg-blue-950/55 text-amber-100 border-amber-200/25 hover:bg-blue-900/70'}`}
@@ -502,14 +502,14 @@ export default function App() {
             </div>
             </div>
 
-            <div className={`transition-all duration-500 origin-left overflow-hidden ${isStyleOpen ? 'max-w-xs opacity-100 ml-2' : 'max-w-0 opacity-0 ml-0 pointer-events-none'}`}>
-            <div className="academy-glass backdrop-blur-xl p-3 md:p-4 rounded-xl md:rounded-2xl flex items-center gap-3 whitespace-nowrap">
+            <div className={`transition-all duration-500 origin-left overflow-hidden max-w-full ${isStyleOpen ? 'w-full sm:w-auto sm:max-w-xs opacity-100 sm:ml-2' : 'max-w-0 opacity-0 ml-0 pointer-events-none'}`}>
+            <div className="academy-glass backdrop-blur-xl p-3 md:p-4 rounded-xl md:rounded-2xl flex items-center gap-3 whitespace-nowrap min-w-0">
                 <MessageSquareQuote size={18} className="text-amber-200 flex-shrink-0" />
                 <input 
                 value={stylePrompt}
                 onChange={(e) => setStylePrompt(e.target.value)}
                 placeholder="输入游戏风格关键词..."
-                className="bg-transparent border-b border-amber-200/35 text-sm text-amber-50 focus:outline-none focus:border-amber-200 w-40 sm:w-52 px-1 placeholder-amber-100/45"
+                className="bg-transparent border-b border-amber-200/35 text-sm text-amber-50 focus:outline-none focus:border-amber-200 w-full sm:w-52 min-w-0 px-1 placeholder-amber-100/45"
                 />
             </div>
             </div>
@@ -520,7 +520,7 @@ export default function App() {
       {gameState !== GameState.SHOW_CARD && (
         <button
             onClick={() => setPeekMode(!peekMode)}
-            className={`absolute bottom-4 right-4 md:bottom-8 md:right-8 z-50 w-12 h-12 md:w-16 md:h-16 rounded-xl md:rounded-2xl flex items-center justify-center transition-all duration-300 shadow-lg border ${peekMode ? 'bg-amber-500 text-slate-950 border-amber-200 shadow-amber-500/30 scale-105' : 'bg-blue-950/75 backdrop-blur-md border-amber-200/35 text-amber-100 hover:text-white hover:bg-blue-900/90'}`}
+            className={`absolute bottom-20 right-3 md:bottom-8 md:right-8 z-50 w-11 h-11 md:w-16 md:h-16 rounded-xl md:rounded-2xl flex items-center justify-center transition-all duration-300 shadow-lg border ${peekMode ? 'bg-amber-500 text-slate-950 border-amber-200 shadow-amber-500/30 scale-105' : 'bg-blue-950/75 backdrop-blur-md border-amber-200/35 text-amber-100 hover:text-white hover:bg-blue-900/90'}`}
             title={peekMode ? '显示界面' : '隐藏界面'}
         >
             <Eye size={24} />
@@ -548,8 +548,8 @@ export default function App() {
       )}
 
       {/* 底部主控区，角色卡展示时隐藏 */}
-      <div className={`absolute bottom-3 md:bottom-4 left-1/2 -translate-x-1/2 z-20 w-full ${isRewardChoice ? 'max-w-[27rem]' : 'max-w-[44rem] lg:max-w-[52rem]'} px-3 flex flex-col items-center gap-3 transition-all duration-500 ${peekMode || gameState === GameState.SHOW_CARD ? 'translate-y-[150%] opacity-0 pointer-events-none' : 'translate-y-0 opacity-100'}`}>
-        <div className={`w-full flex flex-col ${isRewardChoice ? '' : 'md:flex-row'} justify-center gap-3 md:gap-4 items-center md:items-end rounded-2xl p-2.5 md:p-3 summon-altar backdrop-blur-md`}>
+      <div className={`absolute bottom-3 md:bottom-4 left-1/2 -translate-x-1/2 z-20 w-full ${isRewardChoice ? 'max-w-[27rem]' : 'max-w-[44rem] lg:max-w-[52rem]'} px-2.5 sm:px-3 flex flex-col items-center gap-3 transition-all duration-500 ${peekMode || gameState === GameState.SHOW_CARD ? 'translate-y-[150%] opacity-0 pointer-events-none' : 'translate-y-0 opacity-100'}`}>
+        <div className={`w-full flex flex-col ${isRewardChoice ? '' : 'md:flex-row'} justify-center gap-3 md:gap-4 items-center md:items-end rounded-2xl p-2 md:p-3 summon-altar backdrop-blur-md`}>
             {!isRewardChoice && (
             <div className="hidden md:block shrink-0">
                 <InventoryBar
@@ -620,7 +620,7 @@ export default function App() {
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-[minmax(0,3fr)_minmax(72px,1fr)] gap-3">
+                            <div className="grid grid-cols-[minmax(0,3fr)_minmax(68px,1fr)] gap-2.5 sm:gap-3">
                                 {/* 缔结契约按钮 - 带粒子特效和稀有度颜色 - 占据更多空间 */}
                                 <div className="flex-[3] relative overflow-visible">
                                     {/* 按钮外沿余辉 */}
@@ -645,7 +645,7 @@ export default function App() {
                                         {/* 内侧高光边线 */}
                                         <div className="absolute inset-0 z-[4] border border-white/20 border-t-white/45 rounded-xl pointer-events-none"></div>
 
-                                        <div className="relative z-10 flex flex-col items-center gap-1 drop-shadow-[0_2px_6px_rgba(0,0,0,0.55)]">
+                                        <div className="relative z-10 flex flex-col items-center gap-1 drop-shadow-[0_2px_6px_rgba(0,0,0,0.55)] min-w-0 text-center leading-tight">
                                             <Handshake size={20} />
                                             <span className="text-sm">缔结契约</span>
                                             <span className="text-[10px] opacity-80">(抽卡)</span>
@@ -656,9 +656,9 @@ export default function App() {
                                 {/* 领取奖励按钮 - 占据较少空间 */}
                                 <button
                                     onClick={handleChooseReward}
-                                    className="bg-gradient-to-b from-[#f4c96d] via-[#c7852b] to-[#7c4715] hover:brightness-110 text-white font-black py-4 px-2 md:px-6 rounded-xl border-b-4 border-[#4f2d0c] active:border-b-0 active:translate-y-1 transition-all shadow-lg"
+                                    className="bg-gradient-to-b from-[#f4c96d] via-[#c7852b] to-[#7c4715] hover:brightness-110 text-white font-black py-4 px-1.5 md:px-6 rounded-xl border-b-4 border-[#4f2d0c] active:border-b-0 active:translate-y-1 transition-all shadow-lg min-w-0"
                                 >
-                                    <div className="flex flex-col items-center gap-1">
+                                    <div className="flex flex-col items-center gap-1 text-center leading-tight">
                                         <Gift size={20} />
                                         <span className="text-sm">领取奖励</span>
                                         <span className="text-[10px] opacity-80">(不抽卡)</span>
@@ -768,7 +768,7 @@ export default function App() {
                 {(!capabilities.openRouter || !capabilities.runningHub || !capabilities.miniMax) && (
                     <button
                         onClick={() => setIsApiSettingsOpen(true)}
-                        className="text-[11px] text-center text-amber-100 font-bold bg-amber-500/16 border border-amber-200/30 rounded-xl px-3 py-2 hover:bg-amber-500/25 shadow-sm"
+                        className="text-[11px] text-center leading-relaxed text-amber-100 font-bold bg-amber-500/16 border border-amber-200/30 rounded-xl px-3 py-2 hover:bg-amber-500/25 shadow-sm max-w-full"
                     >
                         API 未完整配置：缺少 {missingCapabilityLabels}，对应能力会自动降级
                     </button>

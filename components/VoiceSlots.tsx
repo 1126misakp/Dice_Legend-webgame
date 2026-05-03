@@ -100,11 +100,11 @@ const VoiceSlots: React.FC<VoiceSlotsProps> = ({ info, isUR, isSSR, isSR }) => {
   const isUltimatePlaying = playingVoice === 'ultimate';
 
   return (
-    <div className="flex items-center justify-center gap-2">
-      <div className="flex gap-1">
+    <div className="flex items-center justify-center gap-1 sm:gap-2 scale-[0.94] min-[390px]:scale-100 origin-center">
+      <div className="flex gap-0.5 sm:gap-1">
         {renderActiveSlots()}
       </div>
-      <div className="relative group mx-1">
+      <div className="relative group mx-0.5 sm:mx-1">
         <div
           onClick={(event) => {
             event.stopPropagation();
@@ -125,7 +125,7 @@ const VoiceSlots: React.FC<VoiceSlotsProps> = ({ info, isUR, isSSR, isSR }) => {
           <span className="text-[8px] bg-[#27113f]/90 px-1.5 py-0.5 rounded-full text-amber-100 border border-amber-300/40 shadow-sm">奥义</span>
         </div>
       </div>
-      <div className="flex gap-1 ml-1">
+      <div className="flex gap-0.5 sm:gap-1 ml-0.5 sm:ml-1">
         {renderPassiveSlots()}
       </div>
     </div>

@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  verify:
+    name: 验证
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 拉取代码
+        uses: actions/checkout@v4
+
+      - name: 配置 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 类型检查
+        run: npm run typecheck
+
+      - name: Worker 代理测试
+        run: npm run test:worker
+
+      - name: 生产构建
+        run: npm run build
+
+      - name: Cloudflare dry-run
+        run: npm run cf:dry-run
+
+      - name: 安全审计
+        run: npm run audit
