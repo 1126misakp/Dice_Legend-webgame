@@ -6,7 +6,7 @@ export interface Env {
 
 type ProxyTarget = {
   url: string;
-  buildRequest: (payload: any, apiKey: string) => RequestInit;
+  buildRequest: (payload: Record<string, unknown>, apiKey: string) => RequestInit;
 };
 
 const MAX_BODY_BYTES = 64 * 1024;
@@ -143,12 +143,16 @@ function validateRequest(request: Request): { code: string; message: string; sta
   return null;
 }
 
-async function readJsonBody(request: Request): Promise<any> {
+async function readJsonBody(request: Request): Promise<Record<string, unknown>> {
   const body = await request.text();
   if (body.length > MAX_BODY_BYTES) {
     throw new Error('请求体过大');
   }
-  return body ? JSON.parse(body) : {};
+  const parsed: unknown = body ? JSON.parse(body) : {};
+  if (!isRecord(parsed)) {
+    throw new Error('请求体必须是 JSON 对象');
+  }
+  return parsed;
 }
 
 function isSameOrigin(origin: string, requestUrl: string): boolean {
@@ -200,13 +204,18 @@ function pick(source: Record<string, unknown>, keys: string[]): Record<string, u
   return result;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
 function normalizeUpstreamError(data: unknown, status: number): string {
   if (typeof data === 'string') {
     return data.slice(0, 300) || `上游接口返回 HTTP ${status}`;
   }
-  if (data && typeof data === 'object') {
-    const anyData = data as any;
-    return anyData.error?.message || anyData.message || anyData.msg || `上游接口返回 HTTP ${status}`;
+  if (isRecord(data)) {
+    const nestedError = isRecord(data.error) ? data.error.message : null;
+    const message = nestedError || data.message || data.msg;
+    return typeof message === 'string' ? message : `上游接口返回 HTTP ${status}`;
   }
   return `上游接口返回 HTTP ${status}`;
 }

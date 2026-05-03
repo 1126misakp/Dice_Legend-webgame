@@ -4,12 +4,12 @@ import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { generateFantasyMaterialSets, generateNumericMaterials, generateRaceMaterials } from '../services/textureService';
-import { Inventory, GameState } from '../types';
+import { Inventory, GameState, RawDiceResult } from '../types';
 import { audioService } from '../services/audioService';
 
 interface Props {
-  onRollComplete: (result: any) => void;
-  onDiceUpdate: (result: any) => void;
+  onRollComplete: (result: RawDiceResult) => void;
+  onDiceUpdate: (result: RawDiceResult) => void;
   onAssetsLoaded: () => void;
   fixedDiceIndices: number[];      // 刻印锁定的 (蓝色)
   weightedDiceIndices: number[];   // 灌铅锁定的 (金色)
@@ -45,7 +45,7 @@ const DiceCanvas = forwardRef<DiceCanvasRef, Props>((props, ref) => {
   // 交互状态 Refs
   const interactionRef = useRef<{
     startTime: number;
-    timerId: any;
+    timerId: ReturnType<typeof setTimeout> | null;
     targetIndex: number | null;
     isDragging: boolean;
     lastMouse: THREE.Vector2;
@@ -285,7 +285,7 @@ const DiceCanvas = forwardRef<DiceCanvasRef, Props>((props, ref) => {
             mesh.rotateOnWorldAxis(new THREE.Vector3(1, 0, 0), deltaY * rotateSpeed);
 
             // 同步Body
-            body.quaternion.copy(mesh.quaternion as any);
+            body.quaternion.copy(mesh.quaternion);
         }
     };
 
@@ -360,7 +360,7 @@ const DiceCanvas = forwardRef<DiceCanvasRef, Props>((props, ref) => {
         const q = new THREE.Quaternion().setFromAxisAngle(axis, angle);
         
         mesh.quaternion.premultiply(q); // 应用旋转
-        body.quaternion.copy(mesh.quaternion as any);
+        body.quaternion.copy(mesh.quaternion);
         body.type = CANNON.Body.STATIC; // 保持固定
     };
 
@@ -395,8 +395,8 @@ const DiceCanvas = forwardRef<DiceCanvasRef, Props>((props, ref) => {
             if (interaction.isDragging && interaction.targetIndex === i) {
                  // do nothing
             } else {
-                m.position.copy(diceBodiesRef.current[i].position as any);
-                m.quaternion.copy(diceBodiesRef.current[i].quaternion as any);
+                m.position.copy(diceBodiesRef.current[i].position);
+                m.quaternion.copy(diceBodiesRef.current[i].quaternion);
             }
 
             // 视觉更新：颜色 & 缩放
@@ -545,7 +545,7 @@ const DiceCanvas = forwardRef<DiceCanvasRef, Props>((props, ref) => {
     }
   }));
 
-  const getResults = () => {
+  const getResults = (): RawDiceResult => {
       const faceMap = [
           {v: new CANNON.Vec3(1,0,0), val: 3}, {v: new CANNON.Vec3(-1,0,0), val: 4},
           {v: new CANNON.Vec3(0,1,0), val: 1}, {v: new CANNON.Vec3(0,-1,0), val: 6},

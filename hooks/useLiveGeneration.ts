@@ -179,10 +179,10 @@ export function useLiveGeneration({ info, apiKeys, capabilities }: UseLiveGenera
         logger.debug(`[Live] 动态化任务 ${localQueueId} 开始执行`);
         await executeVideoGeneration(signal);
       }, { signal });
-    } catch (error: any) {
+    } catch (error) {
       if (!isCancelledError(error)) {
         logger.error('[Live] 动态化生成失败', error);
-        alert(`动态化生成失败: ${error.message || '请稍后重试'}`);
+        alert(`动态化生成失败: ${error instanceof Error ? error.message : '请稍后重试'}`);
       }
     } finally {
       if (abortControllerRef.current === controller) {

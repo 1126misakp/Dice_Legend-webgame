@@ -11,7 +11,7 @@ import { audioService } from '../services/audioService';
  * @param onClick 原始点击处理函数
  * @returns 包装后的点击处理函数（会先播放音效）
  */
-export function useButtonSound<T extends (...args: any[]) => any>(
+export function useButtonSound<T extends (...args: unknown[]) => unknown>(
   onClick?: T
 ): T | (() => void) {
   const handleClick = useCallback((...args: Parameters<T>) => {
@@ -36,4 +36,3 @@ export function playClickSound(): void {
 }
 
 export default useButtonSound;
-

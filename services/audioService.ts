@@ -28,6 +28,10 @@ const SOUND_VOLUMES: Record<SoundId, number> = {
   summon_ur: 0.8
 };
 
+type WebkitAudioWindow = Window & typeof globalThis & {
+  webkitAudioContext?: typeof AudioContext;
+};
+
 class AudioService {
   private static instance: AudioService;
   private audioContext: AudioContext | null = null;
@@ -48,7 +52,11 @@ class AudioService {
   public async init(): Promise<void> {
     if (this.isInitialized) return;
     try {
-      this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const AudioContextCtor = window.AudioContext || (window as WebkitAudioWindow).webkitAudioContext;
+      if (!AudioContextCtor) {
+        throw new Error('当前浏览器不支持 Web Audio API');
+      }
+      this.audioContext = new AudioContextCtor();
       this.isInitialized = true;
       logger.info('[AudioService] Web Audio API 初始化完成');
     } catch (error) {

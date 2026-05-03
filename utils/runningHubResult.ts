@@ -13,19 +13,19 @@ const FAILURE_STATUSES = new Set([
 ]);
 const SUCCESS_STATUSES = new Set(['SUCCESS', 'COMPLETED', 'SUCCEED']);
 
-export function extractRunningHubTaskId(response: any): string | null {
-  const data = response?.data;
+export function extractRunningHubTaskId(response: unknown): string | null {
+  const data = getRecordValue(response, 'data');
   if (typeof data === 'string' && data.length > 5) return data;
-  if (data?.taskId) return String(data.taskId);
-  if (data?.task_id) return String(data.task_id);
+  if (isRecord(data) && data.taskId) return String(data.taskId);
+  if (isRecord(data) && data.task_id) return String(data.task_id);
   return null;
 }
 
-export function extractRunningHubImageUrl(response: any): string | null {
+export function extractRunningHubImageUrl(response: unknown): string | null {
   return collectHttpUrls(response).find(isImageUrl) || null;
 }
 
-export function extractRunningHubVideoUrl(response: any, sourceImageUrl?: string): string | null {
+export function extractRunningHubVideoUrl(response: unknown, sourceImageUrl?: string): string | null {
   const candidates = collectHttpUrls(response).filter(url => {
     if (sourceImageUrl && url === sourceImageUrl) return false;
     if (url.includes('/input/')) return false;
@@ -42,30 +42,33 @@ export function extractRunningHubVideoUrl(response: any, sourceImageUrl?: string
   );
 }
 
-export function isRunningHubTaskRunning(response: any): boolean {
-  return response?.code === 804 || response?.msg === 'APIKEY_TASK_IS_RUNNING';
+export function isRunningHubTaskRunning(response: unknown): boolean {
+  return getRecordValue(response, 'code') === 804 || getRecordValue(response, 'msg') === 'APIKEY_TASK_IS_RUNNING';
 }
 
-export function isRunningHubSuccessStatus(response: any): boolean {
+export function isRunningHubSuccessStatus(response: unknown): boolean {
   const status = getRunningHubStatus(response);
   return status ? SUCCESS_STATUSES.has(status) : false;
 }
 
-export function getRunningHubFailureMessage(response: any): string | null {
+export function getRunningHubFailureMessage(response: unknown): string | null {
   const status = getRunningHubStatus(response);
   if (status && FAILURE_STATUSES.has(status)) {
-    return getFirstErrorText(response?.data) || response?.msg || `任务状态错误：${status}`;
+    const msg = getRecordValue(response, 'msg');
+    return getFirstErrorText(getRecordValue(response, 'data')) || (typeof msg === 'string' ? msg : null) || `任务状态错误：${status}`;
   }
 
-  if (response?.code === 805) {
-    return getAuditOrErrorText(response?.data) || response?.msg || '任务状态错误';
+  if (getRecordValue(response, 'code') === 805) {
+    const msg = getRecordValue(response, 'msg');
+    return getAuditOrErrorText(getRecordValue(response, 'data')) || (typeof msg === 'string' ? msg : null) || '任务状态错误';
   }
 
-  return getAuditOrErrorText(response?.data);
+  return getAuditOrErrorText(getRecordValue(response, 'data'));
 }
 
-function getRunningHubStatus(response: any): string {
-  const status = response?.data?.status || response?.data?.taskStatus;
+function getRunningHubStatus(response: unknown): string {
+  const data = getRecordValue(response, 'data');
+  const status = getRecordValue(data, 'status') || getRecordValue(data, 'taskStatus');
   return status ? String(status).toUpperCase() : '';
 }
 
@@ -112,7 +115,7 @@ function collectHttpUrls(value: unknown): string[] {
   return urls;
 }
 
-function getAuditOrErrorText(data: any): string | null {
+function getAuditOrErrorText(data: unknown): string | null {
   const text = getFirstErrorText(data);
   if (!text) return null;
 
@@ -141,8 +144,8 @@ function getAuditOrErrorText(data: any): string | null {
   return null;
 }
 
-function getFirstErrorText(data: any): string | null {
-  if (!data || typeof data !== 'object') return null;
+function getFirstErrorText(data: unknown): string | null {
+  if (!isRecord(data)) return null;
 
   const errorFields = ['exception_message', 'errorMsg', 'error', 'message', 'msg', 'reason', 'failReason'];
   for (const field of errorFields) {
@@ -158,4 +161,12 @@ function getFirstErrorText(data: any): string | null {
   }
 
   return null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function getRecordValue(value: unknown, key: string): unknown {
+  return isRecord(value) ? value[key] : undefined;
 }

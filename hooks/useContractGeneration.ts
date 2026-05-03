@@ -3,7 +3,7 @@ import { CharacterInfo, DiceResult } from '../types';
 import { ApiCapabilities, ApiKeys } from '../utils/apiKeyStore';
 import { ApiClientError } from '../utils/apiClient';
 import { getQueueStatus, runningHubQueue } from '../utils/runningHubQueue';
-import { generateCharacterVoices } from '../services/voiceService';
+import { generateCharacterVoices, VoiceGenerationResult } from '../services/voiceService';
 import { generateFallbackInfo } from '../logic/gameLogic';
 import {
   generateContractCharacterInfo,
@@ -92,7 +92,7 @@ export function useContractGeneration({
         openRouterModel,
         signal
       });
-    } catch (error: any) {
+    } catch (error) {
       logger.warn('[CharacterInfo] 生成失败', error);
       if (isCancelledError(error)) return;
 
@@ -111,14 +111,14 @@ export function useContractGeneration({
       generatedInfo = generateFallbackInfo(result, stylePrompt);
     }
 
-    let voiceGenerationPromise: Promise<any> | null = null;
+    let voiceGenerationPromise: Promise<VoiceGenerationResult> | null = null;
     if (capabilities.miniMax) {
       logger.info('[Voice] 开始并行生成角色语音');
       voiceGenerationPromise = generateCharacterVoices(generatedInfo, apiKeys, (current, total, skillType) => {
         logger.debug(`[Voice] 生成进度: ${current}/${total} - ${skillType}`);
       }).catch(error => {
         logger.error('[Voice] 语音生成异常', error);
-        return { success: false, error: error.message };
+        return { success: false, error: error instanceof Error ? error.message : '未知错误' };
       });
     } else {
       logger.warn('[Voice] 未配置 MiniMax API Key，跳过语音生成');
@@ -133,7 +133,7 @@ export function useContractGeneration({
         openRouterModel,
         signal
       });
-    } catch (error: any) {
+    } catch (error) {
       logger.warn('[ImagePrompt] 生成失败', error);
       if (isCancelledError(error)) return;
 

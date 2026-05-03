@@ -376,12 +376,12 @@ export async function generateVoicePromptAndLines(
   const content = data.choices?.[0]?.message?.content || '';
 
   // 解析JSON响应
-  let parsed: any;
+  let parsed: Record<string, string>;
   try {
     // 尝试提取JSON部分
     const jsonMatch = content.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
-      parsed = JSON.parse(jsonMatch[0]);
+      parsed = normalizeVoiceConfig(JSON.parse(jsonMatch[0]));
     } else {
       throw new Error('无法解析响应');
     }
@@ -410,6 +410,16 @@ export async function generateVoicePromptAndLines(
     voicePrompt: parsed.voice_prompt || `年轻${characterInfo.gender}的声音`,
     lines
   };
+}
+
+function normalizeVoiceConfig(value: unknown): Record<string, string> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+
+  const result: Record<string, string> = {};
+  for (const [key, child] of Object.entries(value)) {
+    if (typeof child === 'string') result[key] = child;
+  }
+  return result;
 }
 
 /**

@@ -27,6 +27,39 @@ export interface ApiClientOptions {
   signal?: AbortSignal;
 }
 
+export interface OpenRouterChatResponse {
+  choices?: Array<{
+    message?: {
+      content?: string;
+    };
+  }>;
+}
+
+export interface RunningHubProxyResponse {
+  code?: number | string;
+  msg?: string;
+  data?: unknown;
+}
+
+export interface MiniMaxVoiceDesignResponse {
+  base_resp?: {
+    status_code?: number;
+    status_msg?: string;
+  };
+  voice_id?: string;
+  trial_audio?: string;
+}
+
+export interface MiniMaxT2AResponse {
+  base_resp?: {
+    status_code?: number;
+    status_msg?: string;
+  };
+  data?: {
+    audio?: string;
+  };
+}
+
 const DEFAULT_TIMEOUT_MS = 30000;
 
 export class ApiClientError extends Error {
@@ -97,23 +130,23 @@ async function callProxy<T>(endpoint: ApiEndpoint, apiKey: string, body: unknown
   return payload.data;
 }
 
-export function proxyOpenRouterChat(apiKey: string, body: unknown, options?: ApiClientOptions): Promise<any> {
+export function proxyOpenRouterChat(apiKey: string, body: unknown, options?: ApiClientOptions): Promise<OpenRouterChatResponse> {
   return callProxy('/api/openrouter/chat', apiKey, body, options);
 }
 
-export function proxyRunningHubRun(apiKey: string, body: unknown, options?: ApiClientOptions): Promise<any> {
+export function proxyRunningHubRun(apiKey: string, body: unknown, options?: ApiClientOptions): Promise<RunningHubProxyResponse> {
   return callProxy('/api/runninghub/run', apiKey, body, options);
 }
 
-export function proxyRunningHubOutputs(apiKey: string, taskId: string, options?: ApiClientOptions): Promise<any> {
+export function proxyRunningHubOutputs(apiKey: string, taskId: string, options?: ApiClientOptions): Promise<RunningHubProxyResponse> {
   return callProxy('/api/runninghub/outputs', apiKey, { taskId }, options);
 }
 
-export function proxyMiniMaxVoiceDesign(apiKey: string, body: unknown, options?: ApiClientOptions): Promise<any> {
+export function proxyMiniMaxVoiceDesign(apiKey: string, body: unknown, options?: ApiClientOptions): Promise<MiniMaxVoiceDesignResponse> {
   return callProxy('/api/minimax/voice-design', apiKey, body, options);
 }
 
-export function proxyMiniMaxT2A(apiKey: string, body: unknown, options?: ApiClientOptions): Promise<any> {
+export function proxyMiniMaxT2A(apiKey: string, body: unknown, options?: ApiClientOptions): Promise<MiniMaxT2AResponse> {
   return callProxy('/api/minimax/t2a', apiKey, body, options);
 }
 

@@ -23,6 +23,12 @@ export interface DiceResult {
   };
 }
 
+export interface RawDiceResult {
+  rawAttributes: number[];
+  destinyPoint: number;
+  racePoint: number;
+}
+
 export interface Inventory {
   crests: number;
   weightedDice: number;

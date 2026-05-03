@@ -22,6 +22,12 @@ interface Props {
   capabilities: ApiCapabilities;
 }
 
+type ProfessionIcon = React.ComponentType<{ size?: number; className?: string }>;
+
+type ProfessionStyle =
+  | { bg: string; icon: ProfessionIcon; border: string; isRainbow?: false }
+  | { bg: 'rainbow'; icon: ProfessionIcon; border: 'rainbow'; isRainbow: true };
+
 const CharacterCard: React.FC<Props> = ({ info, onClose, apiKeys, capabilities }) => {
   const [showFullArt, setShowFullArt] = useState(false);
 
@@ -107,8 +113,8 @@ const CharacterCard: React.FC<Props> = ({ info, onClose, apiKeys, capabilities }
 
   // --- Helper: Profession Style & Icon Mapping ---
   // 命运之子专用图标组件 - 太阳+月亮+星星组合
-  const DestinyChildIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+  const DestinyChildIcon: React.FC<{ className?: string; size?: number }> = ({ className, size = 24 }) => (
+    <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
       {/* 太阳 - 左上 */}
       <circle cx="7" cy="7" r="3" fill="currentColor" opacity="0.9" />
       <g stroke="currentColor" strokeWidth="1">
@@ -128,7 +134,7 @@ const CharacterCard: React.FC<Props> = ({ info, onClose, apiKeys, capabilities }
     </svg>
   );
 
-  const getProfessionStyle = (prof: string) => {
+  const getProfessionStyle = (prof: string): ProfessionStyle => {
       // 命运之子 - 特殊彩虹色处理，使用自定义图标
       if (prof.includes('命运之子')) return { bg: 'rainbow', icon: DestinyChildIcon, border: 'rainbow', isRainbow: true };
       // 战士类 - 初级战士/战士/狂战士/冠军勇士
@@ -580,7 +586,7 @@ const CharacterCard: React.FC<Props> = ({ info, onClose, apiKeys, capabilities }
                     <div className="flex gap-2 mt-3 sm:mt-4 shrink-0">
                         {profStyles.map((style, idx) => {
                             const Icon = style.icon;
-                            const isRainbow = (style as any).isRainbow;
+                            const isRainbow = style.isRainbow;
 
                             if (isRainbow) {
                                 // 命运之子特殊彩虹色图标 - 彩虹月亮
@@ -631,8 +637,8 @@ const CharacterCard: React.FC<Props> = ({ info, onClose, apiKeys, capabilities }
 
                     <div className="flex flex-col pb-1 min-w-0">
                         <div
-                            className={`text-[10px] font-bold uppercase tracking-wider text-white/80 w-fit max-w-full px-1.5 rounded-sm mb-0.5 truncate ${(profStyles[0] as any).isRainbow ? '' : profStyles[0].bg}`}
-                            style={(profStyles[0] as any).isRainbow ? { background: 'linear-gradient(90deg, #ef4444, #f97316, #eab308, #22c55e, #06b6d4, #3b82f6, #8b5cf6)' } : {}}
+                            className={`text-[10px] font-bold uppercase tracking-wider text-white/80 w-fit max-w-full px-1.5 rounded-sm mb-0.5 truncate ${profStyles[0].isRainbow ? '' : profStyles[0].bg}`}
+                            style={profStyles[0].isRainbow ? { background: 'linear-gradient(90deg, #ef4444, #f97316, #eab308, #22c55e, #06b6d4, #3b82f6, #8b5cf6)' } : {}}
                         >
                             {info.profession}
                         </div>

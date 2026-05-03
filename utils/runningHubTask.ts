@@ -15,7 +15,7 @@ export interface RunningHubTaskOptions<T> {
   maxAttempts?: number;
   initialDelayMs?: number;
   getPollIntervalMs?: (attempt: number) => number;
-  extractResult: (response: any) => T | null;
+  extractResult: (response: unknown) => T | null;
   logPrefix: string;
 }
 
@@ -31,9 +31,9 @@ export async function runRunningHubTask<T>({
 }: RunningHubTaskOptions<T>): Promise<T> {
   throwIfCancelled(signal);
 
-  const executeData = await proxyRunningHubRun(apiKey, runBody, { signal });
-  if (executeData.code !== 0) {
-    throw new Error(`RunningHub API error: ${executeData.msg || 'Unknown error'}`);
+  const executeData: unknown = await proxyRunningHubRun(apiKey, runBody, { signal });
+  if (getResponseCode(executeData) !== 0) {
+    throw new Error(`RunningHub API error: ${getResponseMessage(executeData) || 'Unknown error'}`);
   }
 
   logger.debug(`[${logPrefix}] RunningHub 任务提交成功`, executeData);
@@ -59,10 +59,10 @@ export async function runRunningHubTask<T>({
     throwIfCancelled(signal);
 
     try {
-      const queryData = await proxyRunningHubOutputs(apiKey, taskId, { signal });
+      const queryData: unknown = await proxyRunningHubOutputs(apiKey, taskId, { signal });
       consecutiveErrors = 0;
 
-      const currentStatus = `code:${queryData.code},status:${queryData.data?.status || queryData.data?.taskStatus || 'N/A'}`;
+      const currentStatus = `code:${getResponseCode(queryData)},status:${getTaskStatus(queryData) || 'N/A'}`;
       if (attempts % 10 === 0 || currentStatus !== lastStatus) {
         logger.debug(`[${logPrefix}] 轮询第 ${attempts + 1} 次：${currentStatus}`, queryData);
         lastStatus = currentStatus;
@@ -77,18 +77,18 @@ export async function runRunningHubTask<T>({
       const failureMessage = getRunningHubFailureMessage(queryData);
       if (failureMessage) throw new Error(`任务状态错误: ${failureMessage}`);
 
-      if (queryData.code === 0 && queryData.data) {
+      if (getResponseCode(queryData) === 0 && getRecordValue(queryData, 'data')) {
         const result = extractResult(queryData);
         if (result) return result;
 
         if (isRunningHubSuccessStatus(queryData)) {
           logger.debug(`[${logPrefix}] 任务已成功但暂未解析到结果，继续等待`);
         }
-      } else if (queryData.code !== 804) {
-        logger.warn(`[${logPrefix}] 未知 RunningHub 返回码 ${queryData.code}: ${queryData.msg}`);
+      } else if (getResponseCode(queryData) !== 804) {
+        logger.warn(`[${logPrefix}] 未知 RunningHub 返回码 ${getResponseCode(queryData)}: ${getResponseMessage(queryData)}`);
       }
-    } catch (error: any) {
-      const message = error?.message || '';
+    } catch (error) {
+      const message = getErrorMessage(error);
       if (message.includes('生成失败') || message.includes('内容审核') || message.includes('任务状态错误') || message.includes('安审失败')) {
         throw error;
       }
@@ -109,4 +109,32 @@ export async function runRunningHubTask<T>({
   if (finalResult) return finalResult;
 
   throw new Error(`RunningHub 任务超时（${attempts}次轮询）。任务可能仍在服务器处理中。\n任务ID: ${taskId}`);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function getRecordValue(value: unknown, key: string): unknown {
+  return isRecord(value) ? value[key] : undefined;
+}
+
+function getResponseCode(response: unknown): number | string | undefined {
+  const code = getRecordValue(response, 'code');
+  return typeof code === 'number' || typeof code === 'string' ? code : undefined;
+}
+
+function getResponseMessage(response: unknown): string {
+  const msg = getRecordValue(response, 'msg');
+  return typeof msg === 'string' ? msg : '';
+}
+
+function getTaskStatus(response: unknown): string {
+  const data = getRecordValue(response, 'data');
+  const status = getRecordValue(data, 'status') || getRecordValue(data, 'taskStatus');
+  return status ? String(status) : '';
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : '';
 }

@@ -1,4 +1,4 @@
-const isDev = Boolean((import.meta as any).env?.DEV);
+const isDev = Boolean(import.meta.env?.DEV);
 const MAX_STRING_LENGTH = 500;
 
 type LogLevel = 'debug' | 'info' | 'warn' | 'error';

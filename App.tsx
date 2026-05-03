@@ -8,7 +8,8 @@ import SummonAnimation from './components/SummonAnimation';
 import InventoryBar from './components/InventoryBar';
 import ThreeRarityAura from './components/ThreeRarityAura';
 import ApiSettingsPanel from './components/ApiSettingsPanel';
-import { DiceResult, GameState, Inventory, CharacterInfo } from './types';
+import ApiErrorModal from './components/ApiErrorModal';
+import { DiceResult, GameState, Inventory, CharacterInfo, RawDiceResult } from './types';
 import { calculateDiceResult, upgradeProfession } from './logic/gameLogic';
 import { Dices, RefreshCw, Eye, MessageSquareQuote, Handshake, RotateCcw, Gift, ShieldCheck, Anchor, KeyRound } from 'lucide-react';
 import { audioService, Rarity } from './services/audioService';
@@ -113,7 +114,7 @@ export default function App() {
   });
 
   // 1. 投骰结束
-  const handleRollComplete = (rawResult: any) => {
+  const handleRollComplete = (rawResult: RawDiceResult) => {
     // 判断是否使用了刻印或灌铅骰子
     const usedItems = fixedDiceIndices.length > 0 || weightedDiceIndices.length > 0;
 
@@ -136,7 +137,7 @@ export default function App() {
   };
 
   // 2. 使用灌铅骰子后更新结果与命运抉择状态
-  const handleDiceUpdate = (rawResult: any) => {
+  const handleDiceUpdate = (rawResult: RawDiceResult) => {
 	      // 使用灌铅骰子后，usedItems一定为true
 	      const finalResult = calculateDiceResult(rawResult.rawAttributes, rawResult.destinyPoint, rawResult.racePoint, true);
 	      const displayProfession = upgradeProfession(finalResult.profession, finalResult.rarity);
@@ -944,36 +945,14 @@ export default function App() {
         </div>
       )}
 
-      {/* API错误弹框 */}
-      {apiErrorModal.show && (
-        <div className="fixed inset-0 z-[200] bg-black/70 flex items-center justify-center p-4">
-          <div className="academy-parchment rounded-2xl border-2 border-red-500/50 shadow-2xl max-w-md w-full p-6 animate-[fadeIn_0.2s_ease-out]">
-            <div className="flex items-center justify-center mb-4">
-              <div className="w-12 h-12 rounded-full bg-red-500/20 flex items-center justify-center">
-                <svg className="w-6 h-6 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
-              </div>
-            </div>
-            <h3 className="text-red-400 font-black text-lg mb-4 text-center">API 调用失败</h3>
-            <div className="bg-red-950/10 rounded-lg p-4 mb-6 max-h-40 overflow-y-auto border border-red-900/15">
-              <p className="text-[#4a2716] text-sm whitespace-pre-wrap break-words leading-relaxed">
-                {apiErrorModal.message}
-              </p>
-            </div>
-            <button
-              onClick={() => {
-                setApiErrorModal({ show: false, message: '' });
-                setGameState(GameState.CONTRACT_PENDING);
-              }}
-              className="w-full py-3 px-4 rounded-xl bg-[#1b2d4f] hover:bg-[#25406d] text-amber-50 font-bold transition-all border-b-4 border-[#081221] active:border-b-0 active:translate-y-1 flex items-center justify-center gap-2"
-            >
-              <RotateCcw size={18} />
-              返回缔结契约
-            </button>
-          </div>
-        </div>
-      )}
+      <ApiErrorModal
+        open={apiErrorModal.show}
+        message={apiErrorModal.message}
+        onReturn={() => {
+          setApiErrorModal({ show: false, message: '' });
+          setGameState(GameState.CONTRACT_PENDING);
+        }}
+      />
     </div>
   );
 }
