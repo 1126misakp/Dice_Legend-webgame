@@ -2,6 +2,10 @@
 
 一个基于 React、Vite、Three.js 和 cannon-es 的 3D 物理骰子网页游戏。玩家通过投掷属性骰、命运骰和种族骰生成角色，再缔结契约生成角色卡、立绘、语音和动态效果。
 
+## Homepage
+
+- 线上主页：https://dice-legend-webgame.roysindywang.workers.dev
+
 ## 功能
 
 - 3D 物理骰子投掷与点数判定

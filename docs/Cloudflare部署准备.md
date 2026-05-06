@@ -1,12 +1,16 @@
 # Cloudflare 部署准备
 
-记录时间：2026-05-05
+记录时间：2026-05-06
 
 ## 当前结论
 
-项目已经具备 Cloudflare Worker 单体部署条件：Vite 构建产物由 Worker Assets 托管，`/api/*` 由 `src/worker/index.ts` 代理到 OpenRouter、RunningHub 和 MiniMax。
+项目已经完成 Cloudflare Worker 单体部署：Vite 构建产物由 Worker Assets 托管，`/api/*` 由 `src/worker/index.ts` 代理到 OpenRouter、RunningHub 和 MiniMax。
 
-当前机器尚未登录 Cloudflare，实际发布前需要执行 `npx wrangler login`。
+线上主页：
+
+- `https://dice-legend-webgame.roysindywang.workers.dev`
+
+当前机器仍未登录 Cloudflare，本地手动部署需要执行 `npx wrangler login` 或提供 `CLOUDFLARE_API_TOKEN`。当前推荐继续使用 GitHub Actions 自动部署。
 
 ## 部署形态
 
@@ -22,23 +26,26 @@
 已执行：
 
 ```bash
-npm run ci
-npx wrangler whoami
+npm run typecheck
+npm run test:worker
+npm run build
+npm run cf:dry-run
+gh run watch <deploy-run-id> --repo 1126misakp/Dice_Legend-webgame --exit-status
 ```
 
 结果：
 
 - `npm run typecheck` 通过。
-- `npm run test:worker` 通过，16 条 Worker 测试全部通过。
+- `npm run test:worker` 通过，17 条 Worker 测试全部通过。
 - `npm run build` 通过。
 - `npm run cf:dry-run` 通过。
-- `npm run audit` 通过，0 个漏洞。
 - Wrangler 版本为 `4.87.0`。
-- `npx wrangler whoami` 显示未登录，需要发布前登录。
+- GitHub Actions 自动部署成功。
+- `npx wrangler whoami` 仍显示本机未登录，仅影响本地手动部署。
 
-当前构建 chunk：
+最近线上构建 chunk：
 
-- `dist/assets/index-DRZ-GDt0.js`：约 345 KB，gzip 约 111 KB。
+- `dist/assets/index-BtR6jDTF.js`：约 346 KB，gzip 约 111 KB。
 - `dist/assets/three-Ktgq_U5U.js`：约 494 KB，gzip 约 125 KB。
 - `dist/assets/physics-BSpbupWn.js`：约 83 KB，gzip 约 24 KB。
 - `dist/assets/react-B--z-fyW.js`：约 12 KB，gzip 约 4 KB。
@@ -49,7 +56,7 @@ npx wrangler whoami
 
 ### GitHub Actions 自动部署
 
-已新增 `.github/workflows/deploy.yml`。推送到 `main` 或在 GitHub Actions 页面手动触发 `部署到 Cloudflare` 后，会执行：
+已新增并验证 `.github/workflows/deploy.yml`。推送到 `main` 或在 GitHub Actions 页面手动触发 `部署到 Cloudflare` 后，会执行：
 
 - `npm ci`
 - `npm run typecheck`
@@ -64,6 +71,12 @@ npx wrangler whoami
 - `CLOUDFLARE_ACCOUNT_ID`
 
 Token 只需要用于部署当前 Worker 的权限，不要写入仓库、聊天记录或前端环境变量。
+
+最近成功部署：
+
+- `5a9399a`：调整主界面布局与语音槽间距。
+- GitHub Actions run：`25423850043`。
+- 线上包：`/assets/index-BtR6jDTF.js`。
 
 ### 本地手动部署
 
@@ -109,14 +122,16 @@ npm run deploy
 
 ## 当前风险与注意事项
 
-- 尚未使用真实三方 Key 做端到端验收，这是上线前最大剩余风险。
+- 尚未由本轮自动化使用真实三方 Key 做端到端验收，这是当前最大剩余风险。
+- MiniMax 当前使用官方 `api.minimaxi.com` 域名；若浏览器仍返回 `invalid api key`，优先检查用户 Key 是否来自 `platform.minimaxi.com` 且具备语音接口权限。
 - Worker 当前只允许同源或本地开发来源访问 `/api/*`，正式部署后应从 Worker 域名或绑定域名访问页面。
 - 用户 API Key 存在浏览器 `localStorage`，适合个人设备，不适合共享设备长期保存。
 - 如果需要自定义域名，应先在 Cloudflare Dashboard 绑定域名，再用部署后的页面做完整验收。
+- GitHub Actions 目前有 Node.js 20 action 运行时弃用提示，后续需要关注 2026-06-02 后默认 Node.js 24 切换。
 
 ## 清理记录
 
-本轮验证后应清理：
+本轮验证后已清理：
 
 - `dist/`：生产构建产物，部署命令会重新生成。
 - `.wrangler/`：Wrangler 本地缓存。
