@@ -46,7 +46,7 @@ const VoiceSlots: React.FC<VoiceSlotsProps> = ({ info, isUR, isSSR, isSR }) => {
       const isPlaying = playingVoice === skillType;
 
       slots.push(
-        <div key={`active-${i}`} className="relative">
+        <div key={`active-${i}`} className="relative pb-3">
           <div
             onClick={(event) => {
               event.stopPropagation();
@@ -70,8 +70,8 @@ const VoiceSlots: React.FC<VoiceSlotsProps> = ({ info, isUR, isSSR, isSR }) => {
             </div>
           </div>
           {hasVoice && (
-            <div className="absolute -bottom-2 left-1/2 -translate-x-1/2">
-              <span className="text-[6px] text-amber-200/85 whitespace-nowrap">技能{i + 1}</span>
+            <div className="absolute bottom-0 left-1/2 -translate-x-1/2">
+              <span className="block rounded-full bg-black/35 px-1 text-[6px] leading-3 text-amber-200/90 shadow-[0_1px_4px_rgba(0,0,0,0.5)] whitespace-nowrap">技能{i + 1}</span>
             </div>
           )}
         </div>
@@ -104,7 +104,7 @@ const VoiceSlots: React.FC<VoiceSlotsProps> = ({ info, isUR, isSSR, isSR }) => {
       <div className="flex gap-0.5 sm:gap-1">
         {renderActiveSlots()}
       </div>
-      <div className="relative group mx-0.5 sm:mx-1">
+      <div className="relative group mx-0.5 sm:mx-1 pb-3">
         <div
           onClick={(event) => {
             event.stopPropagation();
@@ -121,8 +121,8 @@ const VoiceSlots: React.FC<VoiceSlotsProps> = ({ info, isUR, isSSR, isSR }) => {
             : <Lock size={20} className="text-purple-100" />
           }
         </div>
-        <div className="absolute -bottom-1 w-full text-center">
-          <span className="text-[8px] bg-[#27113f]/90 px-1.5 py-0.5 rounded-full text-amber-100 border border-amber-300/40 shadow-sm">奥义</span>
+        <div className="absolute bottom-0 w-full text-center">
+          <span className="text-[8px] leading-3 bg-[#27113f]/90 px-1.5 py-0.5 rounded-full text-amber-100 border border-amber-300/40 shadow-sm">奥义</span>
         </div>
       </div>
       <div className="flex gap-0.5 sm:gap-1 ml-0.5 sm:ml-1">

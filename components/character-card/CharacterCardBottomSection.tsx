@@ -47,7 +47,7 @@ const CharacterCardBottomSection: React.FC<CharacterCardBottomSectionProps> = ({
         </div>
       </div>
 
-      <div className="mb-3 min-w-0 overflow-hidden">
+      <div className="mb-2 min-w-0 overflow-visible">
         <VoiceSlots info={info} isUR={isUR} isSSR={isSSR} isSR={isSR} />
       </div>
 

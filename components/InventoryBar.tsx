@@ -8,13 +8,22 @@ interface Props {
   activeFixedCount: number;
   activeWeightedCount: number;
   onCancelWeightedDice?: () => void;
+  orientation?: 'horizontal' | 'vertical';
 }
 
-const InventoryBar: React.FC<Props> = ({ inventory, activeFixedCount, activeWeightedCount, onCancelWeightedDice }) => {
+const InventoryBar: React.FC<Props> = ({ inventory, activeFixedCount, activeWeightedCount, onCancelWeightedDice, orientation = 'horizontal' }) => {
+  const isVertical = orientation === 'vertical';
+  const containerClass = isVertical
+    ? 'flex flex-col gap-2 p-2.5 bg-[#0b1630]/82 backdrop-blur-md rounded-2xl shadow-[0_14px_40px_rgba(0,0,0,0.42),inset_0_1px_0_rgba(255,255,255,0.10)] w-full'
+    : 'flex flex-wrap justify-center gap-2 md:gap-4 p-2 md:p-3 bg-[#0b1630]/82 backdrop-blur-md rounded-2xl shadow-[0_14px_40px_rgba(0,0,0,0.42),inset_0_1px_0_rgba(255,255,255,0.10)] max-w-full';
+  const itemClass = isVertical
+    ? 'relative flex items-center gap-3 px-3 py-2.5 rounded-xl group w-full'
+    : 'relative flex items-center gap-2 md:gap-3 px-3 md:px-4 py-2 rounded-xl group min-w-[9.5rem]';
+
   return (
-    <div className="flex flex-wrap justify-center gap-2 md:gap-4 p-2 md:p-3 bg-[#0b1630]/82 backdrop-blur-md border border-amber-300/35 rounded-2xl shadow-[0_14px_40px_rgba(0,0,0,0.42),inset_0_0_0_1px_rgba(255,255,255,0.08)] max-w-full">
+    <div className={containerClass}>
       {/* 刻印储备 */}
-      <div className="relative flex items-center gap-2 md:gap-3 px-3 md:px-4 py-2 bg-[linear-gradient(135deg,rgba(23,37,84,0.92),rgba(12,20,39,0.94))] rounded-xl border border-blue-300/35 shadow-[inset_0_0_18px_rgba(59,130,246,0.12)] group min-w-[9.5rem]">
+      <div className={`${itemClass} bg-[linear-gradient(135deg,rgba(23,37,84,0.92),rgba(12,20,39,0.94))] shadow-[inset_0_1px_0_rgba(255,255,255,0.10),inset_0_0_18px_rgba(59,130,246,0.12)]`}>
         <div className="p-2 bg-blue-500/18 rounded-lg text-blue-200 shrink-0 border border-blue-200/25 shadow-[0_0_18px_rgba(59,130,246,0.22)]">
           <ShieldCheck size={18} />
         </div>
@@ -37,7 +46,7 @@ const InventoryBar: React.FC<Props> = ({ inventory, activeFixedCount, activeWeig
       </div>
 
       {/* 灌铅骰子 */}
-      <div className="relative flex items-center gap-2 md:gap-3 px-3 md:px-4 py-2 bg-[linear-gradient(135deg,rgba(63,39,8,0.9),rgba(20,16,12,0.95))] rounded-xl border border-amber-300/45 shadow-[inset_0_0_18px_rgba(245,158,11,0.14)] group min-w-[9.5rem]">
+      <div className={`${itemClass} bg-[linear-gradient(135deg,rgba(63,39,8,0.9),rgba(20,16,12,0.95))] shadow-[inset_0_1px_0_rgba(255,255,255,0.10),inset_0_0_18px_rgba(245,158,11,0.14)]`}>
         <div className="p-2 bg-amber-400/18 rounded-lg text-amber-200 shrink-0 border border-amber-200/30 shadow-[0_0_18px_rgba(245,158,11,0.25)]">
           <Anchor size={18} />
         </div>
