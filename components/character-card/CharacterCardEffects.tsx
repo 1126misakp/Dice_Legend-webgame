@@ -45,6 +45,7 @@ export const CharacterCardStyleSheet: React.FC = () => (
       transform: skewX(-20deg);
       animation: ssr-shine-move 2.5s ease-in-out infinite;
       pointer-events: none;
+      opacity: 0.42;
     }
     .ssr-shine-bar-2 {
       animation-delay: 1.25s;
@@ -75,7 +76,8 @@ export const CharacterCardStyleSheet: React.FC = () => (
       );
       background-size: 400% 400%;
       animation: holographic-shimmer 3s ease infinite;
-      mix-blend-mode: overlay;
+      mix-blend-mode: soft-light;
+      opacity: 0.38;
     }
     .ur-sparkle {
       position: absolute;
@@ -108,6 +110,25 @@ export const CharacterCardStyleSheet: React.FC = () => (
       transform: skewX(-20deg);
       animation: ur-shine-move 2s ease-in-out infinite;
       pointer-events: none;
+      opacity: 0.5;
+    }
+    .card-rarity-glint-mask {
+      -webkit-mask-image: linear-gradient(
+        to bottom,
+        rgba(0, 0, 0, 0.95) 0%,
+        rgba(0, 0, 0, 0.36) 18%,
+        rgba(0, 0, 0, 0.08) 34%,
+        rgba(0, 0, 0, 0.05) 62%,
+        rgba(0, 0, 0, 0.5) 100%
+      );
+      mask-image: linear-gradient(
+        to bottom,
+        rgba(0, 0, 0, 0.95) 0%,
+        rgba(0, 0, 0, 0.36) 18%,
+        rgba(0, 0, 0, 0.08) 34%,
+        rgba(0, 0, 0, 0.05) 62%,
+        rgba(0, 0, 0, 0.5) 100%
+      );
     }
   `}</style>
 );
@@ -144,7 +165,7 @@ export const InnerRarityEffects: React.FC<{ showFullArt: boolean } & RarityFlags
 
   if (isSSR) {
     return (
-      <div className="absolute inset-0 z-40 pointer-events-none overflow-hidden rounded-xl">
+      <div className="absolute inset-0 z-[4] pointer-events-none overflow-hidden rounded-xl card-rarity-glint-mask">
         <div className="ssr-shine-bar" />
         <div className="ssr-shine-bar ssr-shine-bar-2" />
       </div>
@@ -153,7 +174,7 @@ export const InnerRarityEffects: React.FC<{ showFullArt: boolean } & RarityFlags
 
   if (isUR) {
     return (
-      <div className="absolute inset-0 z-40 pointer-events-none overflow-hidden rounded-xl">
+      <div className="absolute inset-0 z-[4] pointer-events-none overflow-hidden rounded-xl card-rarity-glint-mask">
         <div className="ur-holographic-overlay" />
         <div className="ur-shine-bar" />
         {Array.from({ length: 12 }).map((_, i) => (

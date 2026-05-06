@@ -130,11 +130,9 @@ const CharacterCard: React.FC<Props> = ({ info, onClose, apiKeys, capabilities }
 
         <OuterRarityParticles rarity={info.rarity} isSSR={isSSR} isUR={isUR} showFullArt={showFullArt} />
 
-        <div className={`relative w-full h-full rounded-[1.1rem] overflow-hidden border-[3px] ${showFullArt ? 'border-transparent shadow-none' : `${theme.border} ${theme.shadow} bg-[#0b1630]`} flex flex-col transition-all duration-300 shadow-[0_24px_80px_rgba(0,0,0,0.58)]`}>
+        <div className={`relative isolate w-full h-full rounded-[1.1rem] overflow-hidden border-[3px] ${showFullArt ? 'border-transparent shadow-none' : `${theme.border} ${theme.shadow} bg-[#0b1630]`} flex flex-col transition-all duration-300 shadow-[0_24px_80px_rgba(0,0,0,0.58)]`}>
           {!showFullArt && (
             <>
-              <div className="absolute inset-0 z-[1] pointer-events-none bg-[url('/ui/parchment-panel.png')] bg-cover bg-center opacity-18 mix-blend-screen" />
-              <div className="absolute -right-24 -top-24 z-[2] w-72 h-72 bg-[url('/ui/astrolabe-crest.png')] bg-contain bg-center bg-no-repeat opacity-24 mix-blend-screen pointer-events-none" />
               <div className="absolute inset-[8px] z-[3] pointer-events-none rounded-xl border border-amber-200/22" />
             </>
           )}

@@ -63,7 +63,7 @@ const targets: Record<string, ProxyTarget> = {
     })
   },
   '/api/minimax/voice-design': {
-    url: 'https://api.minimaxi.com/v1/voice_design',
+    url: 'https://api.minimax.io/v1/voice_design',
     validatePayload: validateMiniMaxVoiceDesignPayload,
     buildRequest: (payload, apiKey) => ({
       method: 'POST',
@@ -71,11 +71,11 @@ const targets: Record<string, ProxyTarget> = {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${apiKey}`
       },
-      body: JSON.stringify(pick(payload, ['prompt', 'preview_text', 'aigc_watermark']))
+      body: JSON.stringify(pick(payload, ['prompt', 'preview_text', 'voice_id']))
     })
   },
   '/api/minimax/t2a': {
-    url: 'https://api.minimaxi.com/v1/t2a_v2',
+    url: 'https://api.minimax.io/v1/t2a_v2',
     validatePayload: validateMiniMaxT2APayload,
     buildRequest: (payload, apiKey) => ({
       method: 'POST',
@@ -301,8 +301,8 @@ function validateRunningHubOutputsPayload(payload: Record<string, unknown>): voi
 function validateMiniMaxVoiceDesignPayload(payload: Record<string, unknown>): void {
   requireNonEmptyString(payload.prompt, 'prompt');
   requireNonEmptyString(payload.preview_text, 'preview_text');
-  if (payload.aigc_watermark !== undefined && typeof payload.aigc_watermark !== 'boolean') {
-    throwInvalidPayload('aigc_watermark 必须是布尔值');
+  if (payload.voice_id !== undefined && !isNonEmptyString(payload.voice_id)) {
+    throwInvalidPayload('voice_id 必须是非空字符串');
   }
 }
 

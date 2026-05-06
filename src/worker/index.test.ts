@@ -223,6 +223,32 @@ test('上游文本错误返回统一 UPSTREAM_ERROR', async () => {
   });
 });
 
+test('MiniMax voice-design 代理使用官方域名并只转发白名单字段', async () => {
+  const records = mockUpstream(Response.json({
+    base_resp: { status_code: 0 },
+    voice_id: 'voice-1',
+    trial_audio: 'abcd'
+  }, { status: 200 }));
+
+  const { response, body } = await callWorker('/api/minimax/voice-design', postJson({
+    prompt: '清澈的少女声线',
+    preview_text: '你好',
+    voice_id: 'custom-voice',
+    aigc_watermark: false,
+    injected: 'should-not-forward'
+  }, 'minimax-key'));
+
+  assert.equal(response.status, 200);
+  assert.equal(body.ok, true);
+  assert.equal(records[0].input, 'https://api.minimax.io/v1/voice_design');
+  assert.equal((records[0].init?.headers as Record<string, string>).Authorization, 'Bearer minimax-key');
+  assert.deepEqual(JSON.parse(records[0].init?.body as string), {
+    prompt: '清澈的少女声线',
+    preview_text: '你好',
+    voice_id: 'custom-voice'
+  });
+});
+
 test('OpenRouter payload 类型错误返回 INVALID_PAYLOAD 且不触发上游', async () => {
   const records = mockUnexpectedUpstream();
   const { response, body } = await callWorker('/api/openrouter/chat', postJson({
@@ -283,7 +309,7 @@ test('MiniMax voice-design 类型错误返回 INVALID_PAYLOAD 且不触发上游
   const { response, body } = await callWorker('/api/minimax/voice-design', postJson({
     prompt: '清澈的少女声线',
     preview_text: '你好',
-    aigc_watermark: 'false'
+    voice_id: ''
   }));
 
   assert.equal(response.status, 400);

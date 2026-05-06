@@ -435,8 +435,7 @@ export async function createVoiceDesign(
 
   const data = await proxyMiniMaxVoiceDesign(miniMaxApiKey, {
     prompt: prompt,
-    preview_text: previewText,
-    aigc_watermark: false
+    preview_text: previewText
   });
 
   if (data.base_resp?.status_code !== 0) {

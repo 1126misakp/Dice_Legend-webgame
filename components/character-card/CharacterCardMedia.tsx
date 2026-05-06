@@ -24,7 +24,7 @@ const CharacterCardMedia: React.FC<CharacterCardMediaProps> = ({
       <img
         src={info.imageUrl}
         alt={info.name}
-        className={`w-full h-full object-cover transition-transform duration-300 ${
+        className={`w-full h-full object-cover brightness-110 contrast-105 saturate-110 transition-transform duration-300 ${
           hasRarityBreathing && !showFullArt ? 'rarity-breathing' : ''
         }`}
       />
@@ -50,8 +50,8 @@ const CharacterCardMedia: React.FC<CharacterCardMediaProps> = ({
       />
     )}
 
-    <div className={`absolute inset-0 bg-gradient-to-t from-[#080c16]/95 via-[#0b1630]/46 via-25% to-transparent pointer-events-none transition-opacity duration-300 ${showFullArt ? 'opacity-0' : 'opacity-100'}`} />
-    <div className={`absolute inset-0 bg-gradient-to-b from-[#0b1630]/75 to-transparent h-36 pointer-events-none transition-opacity duration-300 ${showFullArt ? 'opacity-0' : 'opacity-100'}`} />
+    <div className={`absolute inset-x-0 bottom-0 h-[46%] bg-gradient-to-t from-[#080c16]/90 via-[#0b1630]/34 via-40% to-transparent pointer-events-none transition-opacity duration-300 ${showFullArt ? 'opacity-0' : 'opacity-100'}`} />
+    <div className={`absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-[#0b1630]/58 via-[#0b1630]/18 via-55% to-transparent pointer-events-none transition-opacity duration-300 ${showFullArt ? 'opacity-0' : 'opacity-100'}`} />
   </div>
 );
 
