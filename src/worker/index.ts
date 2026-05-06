@@ -63,7 +63,7 @@ const targets: Record<string, ProxyTarget> = {
     })
   },
   '/api/minimax/voice-design': {
-    url: 'https://api.minimax.io/v1/voice_design',
+    url: 'https://api.minimaxi.com/v1/voice_design',
     validatePayload: validateMiniMaxVoiceDesignPayload,
     buildRequest: (payload, apiKey) => ({
       method: 'POST',
@@ -75,7 +75,7 @@ const targets: Record<string, ProxyTarget> = {
     })
   },
   '/api/minimax/t2a': {
-    url: 'https://api.minimax.io/v1/t2a_v2',
+    url: 'https://api.minimaxi.com/v1/t2a_v2',
     validatePayload: validateMiniMaxT2APayload,
     buildRequest: (payload, apiKey) => ({
       method: 'POST',

@@ -223,7 +223,7 @@ test('上游文本错误返回统一 UPSTREAM_ERROR', async () => {
   });
 });
 
-test('MiniMax voice-design 代理使用官方域名并只转发白名单字段', async () => {
+test('MiniMax voice-design 代理使用官方 minimaxi 域名并只转发白名单字段', async () => {
   const records = mockUpstream(Response.json({
     base_resp: { status_code: 0 },
     voice_id: 'voice-1',
@@ -240,7 +240,7 @@ test('MiniMax voice-design 代理使用官方域名并只转发白名单字段',
 
   assert.equal(response.status, 200);
   assert.equal(body.ok, true);
-  assert.equal(records[0].input, 'https://api.minimax.io/v1/voice_design');
+  assert.equal(records[0].input, 'https://api.minimaxi.com/v1/voice_design');
   assert.equal((records[0].init?.headers as Record<string, string>).Authorization, 'Bearer minimax-key');
   assert.deepEqual(JSON.parse(records[0].init?.body as string), {
     prompt: '清澈的少女声线',

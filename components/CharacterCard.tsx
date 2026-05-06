@@ -133,7 +133,7 @@ const CharacterCard: React.FC<Props> = ({ info, onClose, apiKeys, capabilities }
         <div className={`relative isolate w-full h-full rounded-[1.1rem] overflow-hidden border-[3px] ${showFullArt ? 'border-transparent shadow-none' : `${theme.border} ${theme.shadow} bg-[#0b1630]`} flex flex-col transition-all duration-300 shadow-[0_24px_80px_rgba(0,0,0,0.58)]`}>
           {!showFullArt && (
             <>
-              <div className="absolute inset-[8px] z-[3] pointer-events-none rounded-xl border border-amber-200/22" />
+              <div className="absolute inset-[8px] z-[3] pointer-events-none rounded-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.32),inset_0_0_28px_rgba(255,255,255,0.08),inset_0_-22px_36px_rgba(0,0,0,0.2)]" />
             </>
           )}
 
