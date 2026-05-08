@@ -85,12 +85,14 @@ const validRunningHubRunBody = {
   nodeInfoList: [{ nodeId: '1', fieldName: 'text', fieldValue: 'prompt' }]
 };
 
-const validMiniMaxT2ABody = {
-  model: 'speech-02-turbo',
-  text: 'hello',
+const validMimoTTSBody = {
+  model: 'mimo-v2.5-tts-voicedesign',
+  messages: [
+    { role: 'user', content: '清澈的少女声线，语速从容清晰' },
+    { role: 'assistant', content: '命运选中了我。' }
+  ],
   stream: false,
-  voice_setting: { voice_id: 'voice-1', speed: 0.85, vol: 1, pitch: 0 },
-  audio_setting: { sample_rate: 32000, bitrate: 128000, format: 'mp3' }
+  audio: { format: 'wav' }
 };
 
 test('未知 /api/* 返回 NOT_FOUND', async () => {
@@ -214,7 +216,7 @@ test('上游文本错误返回统一 UPSTREAM_ERROR', async () => {
     headers: { 'Content-Type': 'text/plain' }
   }));
 
-  const { response, body } = await callWorker('/api/minimax/t2a', postJson(validMiniMaxT2ABody));
+  const { response, body } = await callWorker('/api/mimo/tts', postJson(validMimoTTSBody));
 
   assert.equal(response.status, 502);
   assert.deepEqual(body, {
@@ -223,29 +225,29 @@ test('上游文本错误返回统一 UPSTREAM_ERROR', async () => {
   });
 });
 
-test('MiniMax voice-design 代理使用官方 minimaxi 域名并只转发白名单字段', async () => {
+test('MiMo TTS 代理使用官方 xiaomimimo 域名并只转发白名单字段', async () => {
   const records = mockUpstream(Response.json({
-    base_resp: { status_code: 0 },
-    voice_id: 'voice-1',
-    trial_audio: 'abcd'
+    choices: [{ message: { audio: { data: 'abcd' } } }]
   }, { status: 200 }));
 
-  const { response, body } = await callWorker('/api/minimax/voice-design', postJson({
-    prompt: '清澈的少女声线',
-    preview_text: '你好',
-    voice_id: 'custom-voice',
-    aigc_watermark: false,
+  const { response, body } = await callWorker('/api/mimo/tts', postJson({
+    ...validMimoTTSBody,
+    temperature: 0.7,
     injected: 'should-not-forward'
-  }, 'minimax-key'));
+  }, 'mimo-key'));
 
   assert.equal(response.status, 200);
   assert.equal(body.ok, true);
-  assert.equal(records[0].input, 'https://api.minimaxi.com/v1/voice_design');
-  assert.equal((records[0].init?.headers as Record<string, string>).Authorization, 'Bearer minimax-key');
+  assert.equal(records[0].input, 'https://api.xiaomimimo.com/v1/chat/completions');
+  assert.equal((records[0].init?.headers as Record<string, string>)['api-key'], 'mimo-key');
   assert.deepEqual(JSON.parse(records[0].init?.body as string), {
-    prompt: '清澈的少女声线',
-    preview_text: '你好',
-    voice_id: 'custom-voice'
+    model: 'mimo-v2.5-tts-voicedesign',
+    messages: [
+      { role: 'user', content: '清澈的少女声线，语速从容清晰' },
+      { role: 'assistant', content: '命运选中了我。' }
+    ],
+    stream: false,
+    audio: { format: 'wav' }
   });
 });
 
@@ -304,12 +306,12 @@ test('RunningHub outputs 缺 taskId 返回 INVALID_PAYLOAD 且不触发上游', 
   assert.equal(records.length, 0);
 });
 
-test('MiniMax voice-design 类型错误返回 INVALID_PAYLOAD 且不触发上游', async () => {
+test('MiMo TTS 缺音频格式返回 INVALID_PAYLOAD 且不触发上游', async () => {
   const records = mockUnexpectedUpstream();
-  const { response, body } = await callWorker('/api/minimax/voice-design', postJson({
-    prompt: '清澈的少女声线',
-    preview_text: '你好',
-    voice_id: ''
+  const { response, body } = await callWorker('/api/mimo/tts', postJson({
+    model: 'mimo-v2.5-tts-voicedesign',
+    messages: validMimoTTSBody.messages,
+    audio: {}
   }));
 
   assert.equal(response.status, 400);
@@ -318,13 +320,13 @@ test('MiniMax voice-design 类型错误返回 INVALID_PAYLOAD 且不触发上游
   assert.equal(records.length, 0);
 });
 
-test('MiniMax t2a 缺 voice_setting 返回 INVALID_PAYLOAD 且不触发上游', async () => {
+test('MiMo TTS 缺 assistant 台词返回 INVALID_PAYLOAD 且不触发上游', async () => {
   const records = mockUnexpectedUpstream();
-  const { response, body } = await callWorker('/api/minimax/t2a', postJson({
-    model: 'speech-02-turbo',
-    text: 'hello',
+  const { response, body } = await callWorker('/api/mimo/tts', postJson({
+    model: 'mimo-v2.5-tts-voicedesign',
+    messages: [{ role: 'user', content: '清澈的少女声线' }],
     stream: false,
-    audio_setting: { sample_rate: 32000 }
+    audio: { format: 'wav' }
   }));
 
   assert.equal(response.status, 400);

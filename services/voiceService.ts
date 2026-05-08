@@ -1,20 +1,14 @@
 /**
  * 语音服务 - 纹章传说
- * 使用 MiniMax API 生成角色专属语音
+ * 使用 MiMo API 生成角色专属语音
  */
 
 import { CharacterInfo, SkillType, VoiceData, CharacterVoices } from '../types';
 import { ApiKeys, DEFAULT_OPENROUTER_MODEL } from '../utils/apiKeyStore';
-import { proxyMiniMaxT2A, proxyMiniMaxVoiceDesign, proxyOpenRouterChat } from '../utils/apiClient';
+import { proxyMimoTTS, proxyOpenRouterChat } from '../utils/apiClient';
 import { logger } from '../utils/logger';
 
-// T2A 语音合成配置
-export interface T2AConfig {
-  speed?: number;     // 语速 0.5-2.0，默认1.0，建议0.8-0.9
-  vol?: number;       // 音量 0-10，默认1.0
-  pitch?: number;     // 语调 -12 到 12，默认0
-  emotion?: string;   // 情绪：happy, sad, angry, fearful, disgusted, surprised, neutral
-}
+const MIMO_TTS_MODEL = 'mimo-v2.5-tts-voicedesign';
 
 // 稀有度对应的语音数量
 export const VOICE_COUNT_BY_RARITY: Record<string, number> = {
@@ -51,7 +45,8 @@ export function base64ToAudioBlob(base64String: string): Blob {
   for (let i = 0; i < binaryString.length; i++) {
     bytes[i] = binaryString.charCodeAt(i);
   }
-  return new Blob([bytes], { type: 'audio/mpeg' });
+  const isWav = bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46;
+  return new Blob([bytes], { type: isWav ? 'audio/wav' : 'audio/mpeg' });
 }
 
 /**
@@ -247,9 +242,9 @@ export async function generateVoicePromptAndLines(
     return { tone: '自然', manner: '说话自然流畅' };
   };
 
-  // 根据种族确定声音特效描述
-  const getRaceVoiceEffect = (race: string, rarity: string): { effect: string; atmosphere: string } => {
-    // 稀有度对应特效强度：R=轻微, SR=适中, SSR=明显, UR=强烈
+  // 根据种族确定声音质感。MiMo VoiceDesign 不适合写混响、EQ 等后期效果词。
+  const getRaceVoiceEffect = (race: string, rarity: string): { atmosphere: string } => {
+    // 稀有度对应表现强度：R=轻微, SR=适中, SSR=明显, UR=强烈
     const intensityMap: Record<string, string> = {
       'R': '轻微的',
       'SR': '适度的',
@@ -260,48 +255,39 @@ export async function generateVoicePromptAndLines(
 
     if (race.includes('人') || race.includes('人族') || race.includes('人类')) {
       return {
-        effect: `${intensity}空间混响`,
-        atmosphere: '自然真实的人声，略带温暖的声音质感'
+        atmosphere: `自然真实的人声，带有${intensity}温暖亲近感`
       };
     } else if (race.includes('精灵') || race.includes('妖精')) {
       return {
-        effect: `${intensity}空灵混响，带有森林般的回音`,
-        atmosphere: '灵动神秘、飘渺空灵的声音质感，如同风铃般清脆'
+        atmosphere: `灵动神秘、清亮空灵的声音质感，带有${intensity}风铃般的轻盈感`
       };
     } else if (race.includes('神') || race.includes('天使') || race.includes('神族')) {
       return {
-        effect: `${intensity}殿堂级混响，庄严的回声效果`,
-        atmosphere: '庄严高贵、神圣威严的声音质感，仿佛从天界传来'
+        atmosphere: `庄严高贵、神圣威严的声音质感，带有${intensity}不可冒犯的压迫感`
       };
     } else if (race.includes('龙') || race.includes('龙族')) {
       return {
-        effect: `${intensity}浑厚低频共振，带有威压感的回响`,
-        atmosphere: '威严狂野、充满力量的声音质感，带有远古巨龙的威压'
+        atmosphere: `威严狂野、充满力量的声音质感，带有${intensity}远古巨龙般的威压`
       };
     } else if (race.includes('恶魔') || race.includes('魔族')) {
       return {
-        effect: `${intensity}黑暗混响，带有电子失真和低频震颤`,
-        atmosphere: '邪魅诱惑、危险深邃的声音质感，仿佛来自地狱深渊'
+        atmosphere: `邪魅诱惑、危险深邃的声音质感，带有${intensity}挑衅和侵略性`
       };
     } else if (race.includes('亡灵') || race.includes('幽灵') || race.includes('不死')) {
       return {
-        effect: `${intensity}幽冥回响，带有空洞的电子音效和虚无感`,
-        atmosphere: '阴森空灵、若隐若现的声音质感，仿佛灵魂在低语'
+        atmosphere: `阴森空灵、若隐若现的声音质感，带有${intensity}虚弱而执念深重的低语感`
       };
     } else if (race.includes('兽') || race.includes('兽人') || race.includes('狼') || race.includes('猫')) {
       return {
-        effect: `${intensity}野性共振，带有原始的力量感`,
-        atmosphere: '野性自然、充满活力的声音质感，带有兽类的本能气息'
+        atmosphere: `野性自然、充满活力的声音质感，带有${intensity}本能和爆发力`
       };
     } else if (race.includes('机械') || race.includes('机器') || race.includes('人造')) {
       return {
-        effect: `${intensity}金属混响，带有电子合成音效`,
-        atmosphere: '机械冰冷、精准有力的声音质感，带有科技感'
+        atmosphere: `冷静克制、精准有力的声音质感，带有${intensity}理性和秩序感`
       };
     } else {
       return {
-        effect: `${intensity}空间混响`,
-        atmosphere: '独特神秘的声音质感'
+        atmosphere: `独特神秘的声音质感，带有${intensity}幻想角色气息`
       };
     }
   };
@@ -322,6 +308,7 @@ export async function generateVoicePromptAndLines(
 - 【语速要求】语速要偏慢、从容、有节奏感，让每个字都清晰可闻
 - 描述格式示例：「${voiceConfig.example}，${raceEffect.atmosphere}，${professionStyle.manner}」
 - 【禁止】出现以下词汇：${voiceConfig.forbidden}（这些与角色年龄不符）
+- 【禁止】使用混响、回声、EQ、压缩、电子失真、后期处理等音频工程词汇
 - 声音必须与角色年龄${characterInfo.age}（属于${voiceConfig.ageRange}）相匹配
 
 【台词规则 - 非常重要】
@@ -423,107 +410,44 @@ function normalizeVoiceConfig(value: unknown): Record<string, string> {
 }
 
 /**
- * 调用MiniMax音色设计API获取 voice_id
- * 只调用一次，用于创建角色专属音色
+ * 调用 MiMo VoiceDesign 模型，根据音色描述和台词直接生成 wav 音频。
  */
-export async function createVoiceDesign(
-  miniMaxApiKey: string,
-  prompt: string,
-  previewText: string = "你好，我是你的专属角色"
-): Promise<{ voiceId: string; audioHex: string }> {
-  logger.info('[VoiceService] 调用 voice_design API 创建音色');
+export async function generateSpeechWithMimo(
+  mimoApiKey: string,
+  voicePrompt: string,
+  text: string
+): Promise<{ voiceId: string; audioData: string }> {
+  logger.info('[VoiceService] 调用 MiMo TTS API', { text });
 
-  const data = await proxyMiniMaxVoiceDesign(miniMaxApiKey, {
-    prompt: prompt,
-    preview_text: previewText
-  });
+  const data = await proxyMimoTTS(mimoApiKey, {
+    model: MIMO_TTS_MODEL,
+    messages: [
+      { role: 'user', content: voicePrompt },
+      { role: 'assistant', content: text }
+    ],
+    audio: {
+      format: 'wav'
+    },
+    stream: false
+  }, { timeoutMs: 60000 });
 
-  if (data.base_resp?.status_code !== 0) {
-    throw new Error(`MiniMax voice_design API错误: ${data.base_resp?.status_msg || '未知错误'}`);
+  const audioData = data.choices?.[0]?.message?.audio?.data;
+  if (!audioData) {
+    throw new Error('MiMo TTS API 未返回音频数据');
   }
 
-  logger.info('[VoiceService] 成功获取 voice_id', data.voice_id);
+  logger.info('[VoiceService] MiMo TTS 生成成功', { audioLength: audioData.length });
 
   return {
-    voiceId: data.voice_id,
-    audioHex: data.trial_audio
+    voiceId: MIMO_TTS_MODEL,
+    audioData
   };
 }
 
 /**
- * 调用MiniMax T2A v2 API 使用已有的 voice_id 生成语音
- * 支持语速、音量、语调、情绪控制
- */
-export async function generateSpeechWithT2A(
-  miniMaxApiKey: string,
-  voiceId: string,
-  text: string,
-  config: T2AConfig = {}
-): Promise<string> {
-  // 设置默认参数
-  const speed = config.speed ?? 0.85;  // 默认语速略慢
-  const vol = config.vol ?? 1.0;
-  const pitch = config.pitch ?? 0;
-  const emotion = config.emotion ?? 'neutral';
-
-  logger.info('[VoiceService] 调用 T2A API', { text, speed, emotion });
-
-  const data = await proxyMiniMaxT2A(miniMaxApiKey, {
-    model: "speech-02-turbo",
-    text: text,
-    stream: false,
-    voice_setting: {
-      voice_id: voiceId,
-      speed: speed,
-      vol: vol,
-      pitch: pitch,
-      emotion: emotion
-    },
-    audio_setting: {
-      sample_rate: 32000,
-      bitrate: 128000,
-      format: "mp3"
-    }
-  });
-
-  if (data.base_resp?.status_code !== 0) {
-    throw new Error(`MiniMax T2A API错误: ${data.base_resp?.status_msg || '未知错误'}`);
-  }
-
-  // T2A API 返回的 audio 字段是 hex 编码的音频数据
-  const audioData = data.data?.audio;
-  if (!audioData) {
-    throw new Error('T2A API 未返回音频数据');
-  }
-
-  logger.info('[VoiceService] T2A 生成成功', { audioLength: audioData.length });
-
-  // 直接返回音频数据，playAudioData 会自动检测格式
-  return audioData;
-}
-
-/**
- * 获取技能类型对应的情绪设置
- */
-function getEmotionForSkillType(skillType: SkillType): string {
-  switch (skillType) {
-    case 'skill1':
-      return 'neutral';  // 普通技能，中性语气
-    case 'skill2':
-      return 'happy';    // 较强技能，自信/愉快
-    case 'skill3':
-      return 'surprised'; // 强力技能，惊讶/兴奋
-    case 'ultimate':
-      return 'angry';    // 奥义，愤怒/强势
-    default:
-      return 'neutral';
-  }
-}
-
-/**
  * 为角色生成所有语音
- * 使用 voice_design API 为每条台词生成语音
- * 音色设计考虑：年龄 + 种族特效（根据稀有度增强）
+ * 使用 MiMo VoiceDesign API 为每条台词生成语音。
+ * 音色设计考虑：年龄 + 种族质感（根据稀有度增强）
  */
 export async function generateCharacterVoices(
   characterInfo: CharacterInfo,
@@ -531,8 +455,8 @@ export async function generateCharacterVoices(
   onProgress?: (current: number, total: number, skillType: SkillType) => void
 ): Promise<VoiceGenerationResult> {
   try {
-    if (!apiKeys.miniMax.trim()) {
-      return { success: false, error: '未配置 MiniMax API Key' };
+    if (!apiKeys.mimo.trim()) {
+      return { success: false, error: '未配置 MiMo API Key' };
     }
 
     logger.info('[VoiceService] 开始生成角色语音', characterInfo.name);
@@ -547,7 +471,7 @@ export async function generateCharacterVoices(
     const voices: VoiceData[] = [];
     let lastVoiceId = '';
 
-    // 3. 为每条台词调用 voice_design API 生成语音
+    // 3. 为每条台词调用 MiMo VoiceDesign API 生成语音
     for (let i = 0; i < skillTypes.length; i++) {
       const skillType = skillTypes[i];
       const line = lines[skillType];
@@ -555,12 +479,11 @@ export async function generateCharacterVoices(
       onProgress?.(i + 1, skillTypes.length, skillType);
       logger.info(`[VoiceService] 生成${getSkillTypeName(skillType)}语音`, line);
 
-      // 调用 voice_design API，同时设计音色并朗读台词
-      const result = await createVoiceDesign(apiKeys.miniMax, voicePrompt, line);
+      const result = await generateSpeechWithMimo(apiKeys.mimo, voicePrompt, line);
 
       voices.push({
         voiceId: result.voiceId,
-        audioDataHex: result.audioHex,
+        audioDataHex: result.audioData,
         skillType,
         line
       });

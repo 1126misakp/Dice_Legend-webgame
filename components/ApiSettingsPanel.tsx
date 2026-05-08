@@ -12,13 +12,13 @@ interface Props {
 }
 
 const keyFields: Array<{
-  id: 'openRouter' | 'runningHub' | 'miniMax';
+  id: 'openRouter' | 'runningHub' | 'mimo';
   label: string;
   hint: string;
 }> = [
   { id: 'openRouter', label: 'OpenRouter API Key', hint: '角色文案、立绘提示词、动态提示词' },
   { id: 'runningHub', label: 'RunningHub API Key', hint: '角色立绘与动态化视频' },
-  { id: 'miniMax', label: 'MiniMax API Key', hint: '角色语音生成' }
+  { id: 'mimo', label: 'MiMo API Key', hint: '角色语音生成' }
 ];
 
 const ApiSettingsPanel: React.FC<Props> = ({ apiKeys, capabilities, open, onClose, onSave, onClear }) => {
@@ -33,7 +33,7 @@ const ApiSettingsPanel: React.FC<Props> = ({ apiKeys, capabilities, open, onClos
   const capabilityItems = [
     { label: '文案', enabled: capabilities.openRouter },
     { label: '立绘/动态', enabled: capabilities.runningHub },
-    { label: '语音', enabled: capabilities.miniMax }
+    { label: '语音', enabled: capabilities.mimo }
   ];
 
   return (
@@ -109,7 +109,7 @@ const ApiSettingsPanel: React.FC<Props> = ({ apiKeys, capabilities, open, onClos
           <button
             onClick={() => {
               onClear();
-              setDraft({ openRouter: '', openRouterModel: DEFAULT_OPENROUTER_MODEL, runningHub: '', miniMax: '' });
+              setDraft({ openRouter: '', openRouterModel: DEFAULT_OPENROUTER_MODEL, runningHub: '', mimo: '' });
             }}
             className="px-4 py-2.5 rounded-xl bg-[#1b2d4f]/12 text-[#34405c] font-bold hover:bg-[#1b2d4f]/20 flex items-center justify-center gap-2 border border-[#1b2d4f]/15"
           >

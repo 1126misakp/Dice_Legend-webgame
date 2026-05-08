@@ -112,7 +112,7 @@ export function useContractGeneration({
     }
 
     let voiceGenerationPromise: Promise<VoiceGenerationResult> | null = null;
-    if (capabilities.miniMax) {
+    if (capabilities.mimo) {
       logger.info('[Voice] 开始并行生成角色语音');
       voiceGenerationPromise = generateCharacterVoices(generatedInfo, apiKeys, (current, total, skillType) => {
         logger.debug(`[Voice] 生成进度: ${current}/${total} - ${skillType}`);
@@ -121,7 +121,7 @@ export function useContractGeneration({
         return { success: false, error: error instanceof Error ? error.message : '未知错误' };
       });
     } else {
-      logger.warn('[Voice] 未配置 MiniMax API Key，跳过语音生成');
+      logger.warn('[Voice] 未配置 MiMo API Key，跳过语音生成');
     }
 
     setLoadingText('灵魂连接中...');

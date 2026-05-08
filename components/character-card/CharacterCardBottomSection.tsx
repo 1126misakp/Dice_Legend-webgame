@@ -51,9 +51,9 @@ const CharacterCardBottomSection: React.FC<CharacterCardBottomSectionProps> = ({
         <VoiceSlots info={info} isUR={isUR} isSSR={isSSR} isSR={isSR} />
       </div>
 
-      {!capabilities.miniMax && (
+      {!capabilities.mimo && (
         <div className="mb-3 rounded-lg bg-black/30 px-3 py-2 text-[10px] text-amber-100/72 shadow-[inset_0_1px_0_rgba(255,255,255,0.16)]">
-          未配置 MiniMax API Key，角色语音未生成。
+          未配置 MiMo API Key，角色语音未生成。
         </div>
       )}
 

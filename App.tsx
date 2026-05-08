@@ -399,7 +399,7 @@ export default function App() {
   const missingCapabilityLabels = [
       !capabilities.openRouter && '文案',
       !capabilities.runningHub && '立绘/动态',
-      !capabilities.miniMax && '语音'
+      !capabilities.mimo && '语音'
   ].filter(Boolean).join('、');
   const isOverflowAuraRarity = (rarity?: string) => rarity === 'SSR' || rarity === 'UR';
   const isRewardChoice = gameState === GameState.REWARD_CHOICE;
@@ -489,7 +489,7 @@ export default function App() {
               </button>
               <button
                 onClick={() => setIsApiSettingsOpen(true)}
-                className={`w-10 h-10 md:w-11 md:h-11 rounded-xl transition-all flex items-center justify-center shrink-0 border ${capabilities.openRouter && capabilities.runningHub && capabilities.miniMax ? 'bg-emerald-500/18 text-emerald-200 border-emerald-200/35 hover:bg-emerald-500/28' : 'bg-amber-500/18 text-amber-200 border-amber-200/35 hover:bg-amber-500/28'}`}
+                className={`w-10 h-10 md:w-11 md:h-11 rounded-xl transition-all flex items-center justify-center shrink-0 border ${capabilities.openRouter && capabilities.runningHub && capabilities.mimo ? 'bg-emerald-500/18 text-emerald-200 border-emerald-200/35 hover:bg-emerald-500/28' : 'bg-amber-500/18 text-amber-200 border-amber-200/35 hover:bg-amber-500/28'}`}
                 title={missingCapabilityLabels ? `API 设置，缺少：${missingCapabilityLabels}` : 'API 设置'}
               >
                 <KeyRound size={22} />
@@ -528,7 +528,7 @@ export default function App() {
               Crest: {fixedDiceIndices.length}<br />
               Weighted: {weightedDiceIndices.length}
             </div>
-            {(!capabilities.openRouter || !capabilities.runningHub || !capabilities.miniMax) && (
+            {(!capabilities.openRouter || !capabilities.runningHub || !capabilities.mimo) && (
               <button
                 onClick={() => setIsApiSettingsOpen(true)}
                 className="w-full text-left text-[11px] leading-relaxed text-amber-100 font-bold bg-amber-500/16 rounded-xl px-3 py-2 hover:bg-amber-500/25 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]"

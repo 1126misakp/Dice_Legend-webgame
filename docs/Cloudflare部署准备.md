@@ -4,7 +4,7 @@
 
 ## 当前结论
 
-项目已经完成 Cloudflare Worker 单体部署：Vite 构建产物由 Worker Assets 托管，`/api/*` 由 `src/worker/index.ts` 代理到 OpenRouter、RunningHub 和 MiniMax。
+项目已经完成 Cloudflare Worker 单体部署：Vite 构建产物由 Worker Assets 托管，`/api/*` 由 `src/worker/index.ts` 代理到 OpenRouter、RunningHub 和 MiMo。
 
 线上主页：
 
@@ -19,7 +19,7 @@
 - 静态资源目录：`dist`
 - 前端路由处理：`not_found_handling` 使用 `single-page-application`
 - Worker 优先处理：`/api/*`
-- 用户密钥模式：BYOK，平台不保存 OpenRouter、RunningHub、MiniMax Key
+- 用户密钥模式：BYOK，平台不保存 OpenRouter、RunningHub、MiMo Key
 
 ## 今日部署前验证
 
@@ -36,7 +36,7 @@ gh run watch <deploy-run-id> --repo 1126misakp/Dice_Legend-webgame --exit-status
 结果：
 
 - `npm run typecheck` 通过。
-- `npm run test:worker` 通过，17 条 Worker 测试全部通过。
+- `npm run test:worker` 通过，20 条 Worker 与配置迁移测试全部通过。
 - `npm run build` 通过。
 - `npm run cf:dry-run` 通过。
 - Wrangler 版本为 `4.87.0`。
@@ -107,23 +107,23 @@ npm run deploy
 ## 上线后验收
 
 - 打开 Worker 部署地址，确认主界面可加载。
-- 打开右上角「API 设置」，填写个人 OpenRouter、RunningHub、MiniMax Key。
+- 打开右上角「API 设置」，填写个人 OpenRouter、RunningHub、MiMo Key。
 - 不填 Key 时确认降级体验正常：
   - 无 OpenRouter：使用本地文案和 prompt 兜底。
   - 无 RunningHub：跳过立绘和 Live 动态化。
-  - 无 MiniMax：跳过语音。
+  - 无 MiMo：跳过语音。
 - 填真实 Key 后至少完成一次完整链路：
   - 投骰生成角色。
   - 缔结契约生成角色文案。
   - RunningHub 生成静态立绘。
-  - MiniMax 生成语音。
+  - MiMo 生成语音。
   - Live 动态化提交、轮询并返回视频。
 - 浏览器开发者工具中确认 `/api/*` 请求命中同域 Worker，而不是直接从前端访问第三方 API。
 
 ## 当前风险与注意事项
 
 - 尚未由本轮自动化使用真实三方 Key 做端到端验收，这是当前最大剩余风险。
-- MiniMax 当前使用官方 `api.minimaxi.com` 域名；若浏览器仍返回 `invalid api key`，优先检查用户 Key 是否来自 `platform.minimaxi.com` 且具备语音接口权限。
+- MiMo 当前使用官方 `api.xiaomimimo.com` 域名；若浏览器返回鉴权失败，优先检查用户 Key 是否来自 Xiaomi MiMo API 开放平台且具备 `mimo-v2.5-tts-voicedesign` 调用权限。
 - Worker 当前只允许同源或本地开发来源访问 `/api/*`，正式部署后应从 Worker 域名或绑定域名访问页面。
 - 用户 API Key 存在浏览器 `localStorage`，适合个人设备，不适合共享设备长期保存。
 - 如果需要自定义域名，应先在 Cloudflare Dashboard 绑定域名，再用部署后的页面做完整验收。

@@ -62,28 +62,16 @@ const targets: Record<string, ProxyTarget> = {
       })
     })
   },
-  '/api/minimax/voice-design': {
-    url: 'https://api.minimaxi.com/v1/voice_design',
-    validatePayload: validateMiniMaxVoiceDesignPayload,
+  '/api/mimo/tts': {
+    url: 'https://api.xiaomimimo.com/v1/chat/completions',
+    validatePayload: validateMimoTTSPayload,
     buildRequest: (payload, apiKey) => ({
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
+        'api-key': apiKey
       },
-      body: JSON.stringify(pick(payload, ['prompt', 'preview_text', 'voice_id']))
-    })
-  },
-  '/api/minimax/t2a': {
-    url: 'https://api.minimaxi.com/v1/t2a_v2',
-    validatePayload: validateMiniMaxT2APayload,
-    buildRequest: (payload, apiKey) => ({
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
-      body: JSON.stringify(pick(payload, ['model', 'text', 'stream', 'voice_setting', 'audio_setting']))
+      body: JSON.stringify(pick(payload, ['model', 'messages', 'audio', 'stream']))
     })
   }
 };
@@ -298,22 +286,32 @@ function validateRunningHubOutputsPayload(payload: Record<string, unknown>): voi
   requireNonEmptyString(payload.taskId, 'taskId');
 }
 
-function validateMiniMaxVoiceDesignPayload(payload: Record<string, unknown>): void {
-  requireNonEmptyString(payload.prompt, 'prompt');
-  requireNonEmptyString(payload.preview_text, 'preview_text');
-  if (payload.voice_id !== undefined && !isNonEmptyString(payload.voice_id)) {
-    throwInvalidPayload('voice_id 必须是非空字符串');
-  }
-}
-
-function validateMiniMaxT2APayload(payload: Record<string, unknown>): void {
+function validateMimoTTSPayload(payload: Record<string, unknown>): void {
   requireNonEmptyString(payload.model, 'model');
-  requireNonEmptyString(payload.text, 'text');
+  const messages = requireNonEmptyArray(payload.messages, 'messages');
+  const audio = requireRecord(payload.audio, 'audio');
+  requireNonEmptyString(audio.format, 'audio.format');
+
   if (payload.stream !== undefined && typeof payload.stream !== 'boolean') {
     throwInvalidPayload('stream 必须是布尔值');
   }
-  requireRecord(payload.voice_setting, 'voice_setting');
-  requireRecord(payload.audio_setting, 'audio_setting');
+
+  let hasUserInstruction = false;
+  let hasAssistantText = false;
+  for (const message of messages) {
+    const chatMessage = requireRecord(message, 'messages[]');
+    const role = requireNonEmptyString(chatMessage.role, 'messages[].role');
+    requireNonEmptyString(chatMessage.content, 'messages[].content');
+    if (role === 'user') hasUserInstruction = true;
+    if (role === 'assistant') hasAssistantText = true;
+  }
+
+  if (!hasUserInstruction) {
+    throwInvalidPayload('messages 必须包含 user 音色描述');
+  }
+  if (!hasAssistantText) {
+    throwInvalidPayload('messages 必须包含 assistant 合成台词');
+  }
 }
 
 function requireRecord(value: unknown, fieldName: string): Record<string, unknown> {

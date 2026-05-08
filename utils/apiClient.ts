@@ -4,8 +4,7 @@ type ApiEndpoint =
   | '/api/openrouter/chat'
   | '/api/runninghub/run'
   | '/api/runninghub/outputs'
-  | '/api/minimax/voice-design'
-  | '/api/minimax/t2a';
+  | '/api/mimo/tts';
 
 interface ProxySuccess<T> {
   ok: true;
@@ -41,23 +40,14 @@ export interface RunningHubProxyResponse {
   data?: unknown;
 }
 
-export interface MiniMaxVoiceDesignResponse {
-  base_resp?: {
-    status_code?: number;
-    status_msg?: string;
-  };
-  voice_id?: string;
-  trial_audio?: string;
-}
-
-export interface MiniMaxT2AResponse {
-  base_resp?: {
-    status_code?: number;
-    status_msg?: string;
-  };
-  data?: {
-    audio?: string;
-  };
+export interface MimoTTSResponse {
+  choices?: Array<{
+    message?: {
+      audio?: {
+        data?: string;
+      };
+    };
+  }>;
 }
 
 const DEFAULT_TIMEOUT_MS = 30000;
@@ -142,17 +132,13 @@ export function proxyRunningHubOutputs(apiKey: string, taskId: string, options?:
   return callProxy('/api/runninghub/outputs', apiKey, { taskId }, options);
 }
 
-export function proxyMiniMaxVoiceDesign(apiKey: string, body: unknown, options?: ApiClientOptions): Promise<MiniMaxVoiceDesignResponse> {
-  return callProxy('/api/minimax/voice-design', apiKey, body, options);
-}
-
-export function proxyMiniMaxT2A(apiKey: string, body: unknown, options?: ApiClientOptions): Promise<MiniMaxT2AResponse> {
-  return callProxy('/api/minimax/t2a', apiKey, body, options);
+export function proxyMimoTTS(apiKey: string, body: unknown, options?: ApiClientOptions): Promise<MimoTTSResponse> {
+  return callProxy('/api/mimo/tts', apiKey, body, options);
 }
 
 export function getMissingApiKeyMessage(keys: ApiKeys): string | null {
   if (!keys.openRouter) return '未配置 OpenRouter API Key，角色文案将使用本地兜底。';
   if (!keys.runningHub) return '未配置 RunningHub API Key，立绘和动态化会缺失。';
-  if (!keys.miniMax) return '未配置 MiniMax API Key，语音会缺失。';
+  if (!keys.mimo) return '未配置 MiMo API Key，语音会缺失。';
   return null;
 }

@@ -12,7 +12,7 @@
 - 稀有度、职业、种族、元素与奖励规则
 - 刻印锁定骰子与灌铅骰子改点机制
 - 角色卡展示、稀有度粒子、召唤动画和合成音效
-- OpenRouter 文案生成、RunningHub 立绘/动态化生成、MiniMax 语音生成
+- OpenRouter 文案生成、RunningHub 立绘/动态化生成、MiMo 语音生成
 
 ## 技术栈
 
@@ -39,7 +39,7 @@ npm run dev
 - OpenRouter API Key：角色文案、立绘提示词、动态提示词
 - OpenRouter 模型：默认 `x-ai/grok-4.1-fast`，可按需改成你希望使用的大模型，主要影响文案生成
 - RunningHub API Key：角色立绘与动态化视频
-- MiniMax API Key：角色语音生成
+- MiMo API Key：角色语音生成
 
 密钥默认保存在浏览器 `localStorage`，只适合个人设备。共享设备使用后请点击「清除密钥」。密钥不会写入 URL、不会进入前端构建产物，也不应提交到 Git 仓库。
 
@@ -47,7 +47,7 @@ npm run dev
 
 - 无 OpenRouter：使用本地角色文案和提示词兜底
 - 无 RunningHub：不生成立绘和动态化视频，角色卡显示文字占位
-- 无 MiniMax：不生成语音，语音按钮显示缺失态
+- 无 MiMo：不生成语音，语音按钮显示缺失态
 
 ## Cloudflare 部署
 

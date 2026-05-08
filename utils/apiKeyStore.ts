@@ -2,13 +2,13 @@ export interface ApiKeys {
   openRouter: string;
   openRouterModel: string;
   runningHub: string;
-  miniMax: string;
+  mimo: string;
 }
 
 export interface ApiCapabilities {
   openRouter: boolean;
   runningHub: boolean;
-  miniMax: boolean;
+  mimo: boolean;
 }
 
 const STORAGE_KEY = 'diceLegend.apiKeys.v1';
@@ -18,15 +18,19 @@ export const emptyApiKeys: ApiKeys = {
   openRouter: '',
   openRouterModel: DEFAULT_OPENROUTER_MODEL,
   runningHub: '',
-  miniMax: ''
+  mimo: ''
 };
 
-function normalizeKeys(value: Partial<ApiKeys> | null | undefined): ApiKeys {
+type StoredApiKeys = Partial<ApiKeys> & {
+  miniMax?: string;
+};
+
+function normalizeKeys(value: StoredApiKeys | null | undefined): ApiKeys {
   return {
     openRouter: value?.openRouter?.trim() ?? '',
     openRouterModel: value?.openRouterModel?.trim() || DEFAULT_OPENROUTER_MODEL,
     runningHub: value?.runningHub?.trim() ?? '',
-    miniMax: value?.miniMax?.trim() ?? ''
+    mimo: value?.mimo?.trim() || value?.miniMax?.trim() || ''
   };
 }
 
@@ -61,6 +65,6 @@ export function getApiCapabilities(keys: ApiKeys): ApiCapabilities {
   return {
     openRouter: keys.openRouter.trim().length > 0,
     runningHub: keys.runningHub.trim().length > 0,
-    miniMax: keys.miniMax.trim().length > 0
+    mimo: keys.mimo.trim().length > 0
   };
 }

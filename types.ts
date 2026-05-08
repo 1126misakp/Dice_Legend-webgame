@@ -74,8 +74,8 @@ export type SkillType = 'entrance' | 'skill1' | 'skill2' | 'skill3' | 'ultimate'
 
 // 单条语音数据
 export interface VoiceData {
-  voiceId: string;           // MiniMax生成的音色ID
-  audioDataHex: string;      // hex编码的音频数据
+  voiceId: string;           // 语音模型或音色标识
+  audioDataHex: string;      // 音频数据，兼容历史 hex 字段名，当前可为 base64
   skillType: SkillType;      // 技能类型
   line: string;              // 台词文本
 }
@@ -84,7 +84,7 @@ export interface VoiceData {
 export interface CharacterVoices {
   characterName: string;
   rarity: string;
-  voiceId: string;           // 角色专属音色ID
+  voiceId: string;           // 角色语音模型或音色标识
   voices: VoiceData[];       // 所有语音列表
 }
 
