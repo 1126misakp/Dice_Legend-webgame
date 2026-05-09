@@ -1,7 +1,7 @@
 import { MouseEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { CharacterInfo } from '../types';
-import { ApiCapabilities, ApiKeys, DEFAULT_OPENROUTER_MODEL } from '../utils/apiKeyStore';
-import { proxyOpenRouterChat } from '../utils/apiClient';
+import { ApiCapabilities, ApiKeys } from '../utils/apiKeyStore';
+import { proxyTextChat } from '../utils/apiClient';
 import { getQueueStatus, runningHubQueue } from '../utils/runningHubQueue';
 import { buildFallbackLivePrompt, buildLivePromptUserText, LIVE_SYSTEM_PROMPT } from '../utils/promptTemplates';
 import { extractRunningHubVideoUrl } from '../utils/runningHubResult';
@@ -38,12 +38,11 @@ export function useLiveGeneration({ info, apiKeys, capabilities }: UseLiveGenera
     const characterInfoText = buildLivePromptUserText(info);
 
     try {
-      if (!capabilities.openRouter || !apiKeys.openRouter.trim()) {
-        throw new Error('未配置 OpenRouter API Key');
+      if (!capabilities.text) {
+        throw new Error('未配置文案模型 API Key');
       }
 
-      const grokData = await proxyOpenRouterChat(apiKeys.openRouter, {
-        model: apiKeys.openRouterModel || DEFAULT_OPENROUTER_MODEL,
+      const grokData = await proxyTextChat(apiKeys, {
         messages: [
           { role: 'system', content: LIVE_SYSTEM_PROMPT },
           {
@@ -99,10 +98,10 @@ export function useLiveGeneration({ info, apiKeys, capabilities }: UseLiveGenera
       return chineseScript;
     } catch (error) {
       if (isCancelledError(error)) throw error;
-      logger.warn('[Live] OpenRouter 动态提示词失败，使用本地兜底', error);
+      logger.warn('[Live] 文案模型动态提示词失败，使用本地兜底', error);
       return buildFallbackLivePrompt(info.rarity);
     }
-  }, [apiKeys.openRouter, apiKeys.openRouterModel, capabilities.openRouter, info]);
+  }, [apiKeys, capabilities.text, info]);
 
   const executeVideoGeneration = useCallback(async (signal: AbortSignal) => {
     logger.info('[Live] 开始生成动态化提示词');

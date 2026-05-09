@@ -4,11 +4,11 @@
  */
 
 import { CharacterInfo, SkillType, VoiceData, CharacterVoices } from '../types';
-import { ApiKeys, DEFAULT_OPENROUTER_MODEL } from '../utils/apiKeyStore';
-import { proxyMimoTTS, proxyOpenRouterChat } from '../utils/apiClient';
+import { ApiKeys } from '../utils/apiKeyStore';
+import { proxyMimoTTS, proxyTextChat } from '../utils/apiClient';
 import { logger } from '../utils/logger';
 
-const MIMO_TTS_MODEL = 'mimo-v2.5-tts-voicedesign';
+const MIMO_TTS_MODEL = 'MiMo-V2.5-TTS-VoiceDesign';
 
 // 稀有度对应的语音数量
 export const VOICE_COUNT_BY_RARITY: Record<string, number> = {
@@ -148,8 +148,7 @@ function buildFallbackVoiceConfig(characterInfo: CharacterInfo): { voicePrompt: 
  */
 export async function generateVoicePromptAndLines(
   characterInfo: CharacterInfo,
-  openRouterApiKey?: string,
-  openRouterModel: string = DEFAULT_OPENROUTER_MODEL
+  apiKeys: ApiKeys
 ): Promise<{ voicePrompt: string; lines: Record<SkillType, string> }> {
   const skillTypes = getSkillTypesByRarity(characterInfo.rarity);
   
@@ -346,13 +345,16 @@ export async function generateVoicePromptAndLines(
   ${skillTypes.map(s => `"${s}_line": "${getSkillTypeName(s)}台词内容"`).join(',\n  ')}
 }`;
 
-  if (!openRouterApiKey?.trim()) {
+  if (apiKeys.textProvider === 'openRouter' && !apiKeys.openRouter.trim()) {
     logger.warn('[VoiceService] 未配置 OpenRouter API Key，使用本地语音台词兜底');
     return buildFallbackVoiceConfig(characterInfo);
   }
+  if (apiKeys.textProvider === 'mimo' && !apiKeys.mimo.trim()) {
+    logger.warn('[VoiceService] 未配置 MiMo API Key，使用本地语音台词兜底');
+    return buildFallbackVoiceConfig(characterInfo);
+  }
 
-  const data = await proxyOpenRouterChat(openRouterApiKey, {
-    model: openRouterModel,
+  const data = await proxyTextChat(apiKeys, {
     messages: [
       { role: "system", content: systemPrompt },
       { role: "user", content: userPrompt }
@@ -462,7 +464,7 @@ export async function generateCharacterVoices(
     logger.info('[VoiceService] 开始生成角色语音', characterInfo.name);
 
     // 1. 生成音色描述和台词
-    const { voicePrompt, lines } = await generateVoicePromptAndLines(characterInfo, apiKeys.openRouter, apiKeys.openRouterModel);
+    const { voicePrompt, lines } = await generateVoicePromptAndLines(characterInfo, apiKeys);
     logger.debug('[VoiceService] 音色描述', voicePrompt);
     logger.debug('[VoiceService] 台词', lines);
 

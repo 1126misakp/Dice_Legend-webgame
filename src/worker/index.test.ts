@@ -86,13 +86,23 @@ const validRunningHubRunBody = {
 };
 
 const validMimoTTSBody = {
-  model: 'mimo-v2.5-tts-voicedesign',
+  model: 'MiMo-V2.5-TTS-VoiceDesign',
   messages: [
     { role: 'user', content: '清澈的少女声线，语速从容清晰' },
     { role: 'assistant', content: '命运选中了我。' }
   ],
   stream: false,
   audio: { format: 'wav' }
+};
+
+const validMimoChatBody = {
+  model: 'MiMo-V2.5-Pro',
+  messages: [
+    { role: 'system', content: '你是专业的游戏文案策划。' },
+    { role: 'user', content: '生成一个角色设定。' }
+  ],
+  max_completion_tokens: 1000,
+  temperature: 0.8
 };
 
 test('未知 /api/* 返回 NOT_FOUND', async () => {
@@ -225,7 +235,7 @@ test('上游文本错误返回统一 UPSTREAM_ERROR', async () => {
   });
 });
 
-test('MiMo TTS 代理使用官方 xiaomimimo 域名并只转发白名单字段', async () => {
+test('MiMo TTS 代理使用 Token Plan 专属域名并只转发白名单字段', async () => {
   const records = mockUpstream(Response.json({
     choices: [{ message: { audio: { data: 'abcd' } } }]
   }, { status: 200 }));
@@ -238,10 +248,10 @@ test('MiMo TTS 代理使用官方 xiaomimimo 域名并只转发白名单字段',
 
   assert.equal(response.status, 200);
   assert.equal(body.ok, true);
-  assert.equal(records[0].input, 'https://api.xiaomimimo.com/v1/chat/completions');
+  assert.equal(records[0].input, 'https://token-plan-cn.xiaomimimo.com/v1/chat/completions');
   assert.equal((records[0].init?.headers as Record<string, string>)['api-key'], 'mimo-key');
   assert.deepEqual(JSON.parse(records[0].init?.body as string), {
-    model: 'mimo-v2.5-tts-voicedesign',
+    model: 'MiMo-V2.5-TTS-VoiceDesign',
     messages: [
       { role: 'user', content: '清澈的少女声线，语速从容清晰' },
       { role: 'assistant', content: '命运选中了我。' }
@@ -249,6 +259,24 @@ test('MiMo TTS 代理使用官方 xiaomimimo 域名并只转发白名单字段',
     stream: false,
     audio: { format: 'wav' }
   });
+});
+
+test('MiMo 文案代理使用 Token Plan 专属域名和 MiMo-V2.5-Pro', async () => {
+  const records = mockUpstream(Response.json({
+    choices: [{ message: { content: '{"name":"测试角色"}' } }]
+  }, { status: 200 }));
+
+  const { response, body } = await callWorker('/api/mimo/chat', postJson({
+    ...validMimoChatBody,
+    max_tokens: 9999,
+    injected: 'should-not-forward'
+  }, 'tp-mimo-key'));
+
+  assert.equal(response.status, 200);
+  assert.equal(body.ok, true);
+  assert.equal(records[0].input, 'https://token-plan-cn.xiaomimimo.com/v1/chat/completions');
+  assert.equal((records[0].init?.headers as Record<string, string>)['api-key'], 'tp-mimo-key');
+  assert.deepEqual(JSON.parse(records[0].init?.body as string), validMimoChatBody);
 });
 
 test('OpenRouter payload 类型错误返回 INVALID_PAYLOAD 且不触发上游', async () => {
@@ -309,7 +337,7 @@ test('RunningHub outputs 缺 taskId 返回 INVALID_PAYLOAD 且不触发上游', 
 test('MiMo TTS 缺音频格式返回 INVALID_PAYLOAD 且不触发上游', async () => {
   const records = mockUnexpectedUpstream();
   const { response, body } = await callWorker('/api/mimo/tts', postJson({
-    model: 'mimo-v2.5-tts-voicedesign',
+    model: 'MiMo-V2.5-TTS-VoiceDesign',
     messages: validMimoTTSBody.messages,
     audio: {}
   }));
@@ -323,10 +351,24 @@ test('MiMo TTS 缺音频格式返回 INVALID_PAYLOAD 且不触发上游', async 
 test('MiMo TTS 缺 assistant 台词返回 INVALID_PAYLOAD 且不触发上游', async () => {
   const records = mockUnexpectedUpstream();
   const { response, body } = await callWorker('/api/mimo/tts', postJson({
-    model: 'mimo-v2.5-tts-voicedesign',
+    model: 'MiMo-V2.5-TTS-VoiceDesign',
     messages: [{ role: 'user', content: '清澈的少女声线' }],
     stream: false,
     audio: { format: 'wav' }
+  }));
+
+  assert.equal(response.status, 400);
+  assert.equal(body.ok, false);
+  assert.equal(body.error.code, 'INVALID_PAYLOAD');
+  assert.equal(records.length, 0);
+});
+
+test('MiMo 文案代理缺 max_completion_tokens 返回 INVALID_PAYLOAD 且不触发上游', async () => {
+  const records = mockUnexpectedUpstream();
+  const { response, body } = await callWorker('/api/mimo/chat', postJson({
+    model: 'MiMo-V2.5-Pro',
+    messages: validMimoChatBody.messages,
+    temperature: 0.8
   }));
 
   assert.equal(response.status, 400);

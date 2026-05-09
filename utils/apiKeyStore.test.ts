@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { afterEach, beforeEach, test } from 'node:test';
 import {
   DEFAULT_OPENROUTER_MODEL,
+  DEFAULT_TEXT_PROVIDER,
   clearApiKeys,
   getApiCapabilities,
   loadApiKeys,
@@ -59,9 +60,12 @@ test('loadApiKeys 将旧 miniMax 本地配置迁移为 mimo 字段', () => {
     openRouter: 'openrouter-key',
     openRouterModel: DEFAULT_OPENROUTER_MODEL,
     runningHub: 'runninghub-key',
-    mimo: 'old-minimax-key'
+    mimo: 'old-minimax-key',
+    textProvider: DEFAULT_TEXT_PROVIDER
   });
+  assert.equal(keys.textProvider, 'mimo');
   assert.equal(getApiCapabilities(keys).mimo, true);
+  assert.equal(getApiCapabilities(keys).text, true);
 });
 
 test('saveApiKeys 只保存新的 mimo 字段并清理旧字段', () => {
@@ -69,14 +73,16 @@ test('saveApiKeys 只保存新的 mimo 字段并清理旧字段', () => {
     openRouter: 'openrouter-key',
     openRouterModel: '',
     runningHub: 'runninghub-key',
-    mimo: 'mimo-key'
+    mimo: 'mimo-key',
+    textProvider: 'openRouter'
   });
 
   assert.deepEqual(saved, {
     openRouter: 'openrouter-key',
     openRouterModel: DEFAULT_OPENROUTER_MODEL,
     runningHub: 'runninghub-key',
-    mimo: 'mimo-key'
+    mimo: 'mimo-key',
+    textProvider: 'openRouter'
   });
   assert.deepEqual(JSON.parse(storage['diceLegend.apiKeys.v1']), saved);
   assert.equal('miniMax' in JSON.parse(storage['diceLegend.apiKeys.v1']), false);
@@ -90,4 +96,23 @@ test('clearApiKeys 清除本地配置并返回空 MiMo 配置', () => {
   assert.equal(storage['diceLegend.apiKeys.v1'], undefined);
   assert.equal(keys.mimo, '');
   assert.equal(getApiCapabilities(keys).mimo, false);
+  assert.equal(getApiCapabilities(keys).text, false);
+});
+
+test('getApiCapabilities 根据文案供应商切换文案能力', () => {
+  assert.equal(getApiCapabilities({
+    openRouter: 'openrouter-key',
+    openRouterModel: DEFAULT_OPENROUTER_MODEL,
+    runningHub: '',
+    mimo: '',
+    textProvider: 'openRouter'
+  }).text, true);
+
+  assert.equal(getApiCapabilities({
+    openRouter: 'openrouter-key',
+    openRouterModel: DEFAULT_OPENROUTER_MODEL,
+    runningHub: '',
+    mimo: '',
+    textProvider: 'mimo'
+  }).text, false);
 });

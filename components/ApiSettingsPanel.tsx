@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { KeyRound, Save, Trash2, X, CheckCircle2, AlertTriangle } from 'lucide-react';
-import { ApiCapabilities, ApiKeys, DEFAULT_OPENROUTER_MODEL } from '../utils/apiKeyStore';
+import { ApiCapabilities, ApiKeys, DEFAULT_OPENROUTER_MODEL, DEFAULT_TEXT_PROVIDER, TextProvider } from '../utils/apiKeyStore';
 
 interface Props {
   apiKeys: ApiKeys;
@@ -18,7 +18,12 @@ const keyFields: Array<{
 }> = [
   { id: 'openRouter', label: 'OpenRouter API Key', hint: '角色文案、立绘提示词、动态提示词' },
   { id: 'runningHub', label: 'RunningHub API Key', hint: '角色立绘与动态化视频' },
-  { id: 'mimo', label: 'MiMo API Key', hint: '角色语音生成' }
+  { id: 'mimo', label: 'MiMo API Key', hint: 'Token Plan 文案与角色语音生成' }
+];
+
+const textProviderOptions: Array<{ value: TextProvider; label: string; hint: string }> = [
+  { value: 'mimo', label: 'MiMo Token Plan', hint: '默认，使用 MiMo-V2.5-Pro' },
+  { value: 'openRouter', label: 'OpenRouter', hint: '备用，使用下方 OpenRouter 模型' }
 ];
 
 const ApiSettingsPanel: React.FC<Props> = ({ apiKeys, capabilities, open, onClose, onSave, onClear }) => {
@@ -31,7 +36,7 @@ const ApiSettingsPanel: React.FC<Props> = ({ apiKeys, capabilities, open, onClos
   if (!open) return null;
 
   const capabilityItems = [
-    { label: '文案', enabled: capabilities.openRouter },
+    { label: '文案', enabled: capabilities.text },
     { label: '立绘/动态', enabled: capabilities.runningHub },
     { label: '语音', enabled: capabilities.mimo }
   ];
@@ -64,6 +69,22 @@ const ApiSettingsPanel: React.FC<Props> = ({ apiKeys, capabilities, open, onClos
               </div>
             ))}
           </div>
+
+          <label className="block">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-sm font-bold text-[#3b2410]">文案供应商</span>
+              <span className="text-[11px] text-[#7c5a2b]">角色文案、提示词、语音台词</span>
+            </div>
+            <select
+              value={draft.textProvider}
+              onChange={e => setDraft(prev => ({ ...prev, textProvider: e.target.value as TextProvider }))}
+              className="w-full rounded-xl border border-amber-900/20 bg-white/70 px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-blue-700 focus:ring-2 focus:ring-blue-900/10"
+            >
+              {textProviderOptions.map(option => (
+                <option key={option.value} value={option.value}>{option.label} - {option.hint}</option>
+              ))}
+            </select>
+          </label>
 
           {keyFields.map(field => (
             <label key={field.id} className="block">
@@ -109,7 +130,7 @@ const ApiSettingsPanel: React.FC<Props> = ({ apiKeys, capabilities, open, onClos
           <button
             onClick={() => {
               onClear();
-              setDraft({ openRouter: '', openRouterModel: DEFAULT_OPENROUTER_MODEL, runningHub: '', mimo: '' });
+              setDraft({ openRouter: '', openRouterModel: DEFAULT_OPENROUTER_MODEL, runningHub: '', mimo: '', textProvider: DEFAULT_TEXT_PROVIDER });
             }}
             className="px-4 py-2.5 rounded-xl bg-[#1b2d4f]/12 text-[#34405c] font-bold hover:bg-[#1b2d4f]/20 flex items-center justify-center gap-2 border border-[#1b2d4f]/15"
           >

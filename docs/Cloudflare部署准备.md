@@ -109,7 +109,7 @@ npm run deploy
 - 打开 Worker 部署地址，确认主界面可加载。
 - 打开右上角「API 设置」，填写个人 OpenRouter、RunningHub、MiMo Key。
 - 不填 Key 时确认降级体验正常：
-  - 无 OpenRouter：使用本地文案和 prompt 兜底。
+  - 无当前文案供应商 Key：使用本地文案和 prompt 兜底。
   - 无 RunningHub：跳过立绘和 Live 动态化。
   - 无 MiMo：跳过语音。
 - 填真实 Key 后至少完成一次完整链路：
@@ -123,7 +123,7 @@ npm run deploy
 ## 当前风险与注意事项
 
 - 尚未由本轮自动化使用真实三方 Key 做端到端验收，这是当前最大剩余风险。
-- MiMo 当前使用官方 `api.xiaomimimo.com` 域名；若浏览器返回鉴权失败，优先检查用户 Key 是否来自 Xiaomi MiMo API 开放平台且具备 `mimo-v2.5-tts-voicedesign` 调用权限。
+- MiMo 当前使用 Token Plan 中国区专属 Base URL：`https://token-plan-cn.xiaomimimo.com/v1`。若浏览器返回鉴权失败，优先检查用户 Key 是否为 Token Plan `tp-` Key，且具备 `MiMo-V2.5-Pro` 与 `MiMo-V2.5-TTS-VoiceDesign` 调用权限。
 - Worker 当前只允许同源或本地开发来源访问 `/api/*`，正式部署后应从 Worker 域名或绑定域名访问页面。
 - 用户 API Key 存在浏览器 `localStorage`，适合个人设备，不适合共享设备长期保存。
 - 如果需要自定义域名，应先在 Cloudflare Dashboard 绑定域名，再用部署后的页面做完整验收。

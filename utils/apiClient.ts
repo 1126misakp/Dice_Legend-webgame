@@ -1,10 +1,11 @@
-import { ApiKeys } from './apiKeyStore';
+import { ApiKeys, DEFAULT_OPENROUTER_MODEL } from './apiKeyStore';
 
 type ApiEndpoint =
   | '/api/openrouter/chat'
   | '/api/runninghub/run'
   | '/api/runninghub/outputs'
-  | '/api/mimo/tts';
+  | '/api/mimo/tts'
+  | '/api/mimo/chat';
 
 interface ProxySuccess<T> {
   ok: true;
@@ -50,6 +51,9 @@ export interface MimoTTSResponse {
   }>;
 }
 
+export type ChatCompletionResponse = OpenRouterChatResponse;
+
+const MIMO_TEXT_MODEL = 'MiMo-V2.5-Pro';
 const DEFAULT_TIMEOUT_MS = 30000;
 
 export class ApiClientError extends Error {
@@ -136,8 +140,29 @@ export function proxyMimoTTS(apiKey: string, body: unknown, options?: ApiClientO
   return callProxy('/api/mimo/tts', apiKey, body, options);
 }
 
+export function proxyMimoChat(apiKey: string, body: unknown, options?: ApiClientOptions): Promise<ChatCompletionResponse> {
+  return callProxy('/api/mimo/chat', apiKey, body, options);
+}
+
+export function proxyTextChat(keys: ApiKeys, body: Record<string, unknown>, options?: ApiClientOptions): Promise<ChatCompletionResponse> {
+  if (keys.textProvider === 'openRouter') {
+    return proxyOpenRouterChat(keys.openRouter, {
+      ...body,
+      model: keys.openRouterModel || DEFAULT_OPENROUTER_MODEL
+    }, options);
+  }
+
+  const { max_tokens: maxTokens, ...rest } = body;
+  return proxyMimoChat(keys.mimo, {
+    ...rest,
+    model: MIMO_TEXT_MODEL,
+    max_completion_tokens: typeof maxTokens === 'number' ? maxTokens : 10000
+  }, options);
+}
+
 export function getMissingApiKeyMessage(keys: ApiKeys): string | null {
-  if (!keys.openRouter) return '未配置 OpenRouter API Key，角色文案将使用本地兜底。';
+  if (keys.textProvider === 'openRouter' && !keys.openRouter) return '未配置 OpenRouter API Key，角色文案将使用本地兜底。';
+  if (keys.textProvider === 'mimo' && !keys.mimo) return '未配置 MiMo API Key，角色文案将使用本地兜底。';
   if (!keys.runningHub) return '未配置 RunningHub API Key，立绘和动态化会缺失。';
   if (!keys.mimo) return '未配置 MiMo API Key，语音会缺失。';
   return null;

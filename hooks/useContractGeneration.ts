@@ -18,7 +18,6 @@ import { logger } from '../utils/logger';
 interface UseContractGenerationOptions {
   apiKeys: ApiKeys;
   capabilities: ApiCapabilities;
-  openRouterModel: string;
   onCharacterReady: (info: CharacterInfo) => void;
   onVoiceReady: (info: CharacterInfo) => void;
   onApiError: (message: string) => void;
@@ -29,7 +28,6 @@ interface UseContractGenerationOptions {
 export function useContractGeneration({
   apiKeys,
   capabilities,
-  openRouterModel,
   onCharacterReady,
   onVoiceReady,
   onApiError,
@@ -89,7 +87,6 @@ export function useContractGeneration({
       generatedInfo = await generateContractCharacterInfo(result, stylePrompt, {
         apiKeys,
         capabilities,
-        openRouterModel,
         signal
       });
     } catch (error) {
@@ -130,7 +127,6 @@ export function useContractGeneration({
       imagePrompt = await generateContractImagePrompt(generatedInfo, {
         apiKeys,
         capabilities,
-        openRouterModel,
         signal
       });
     } catch (error) {
@@ -219,7 +215,6 @@ export function useContractGeneration({
     onImageFailure,
     onReturnToContractPending,
     onVoiceReady,
-    openRouterModel,
     startProgressAnimation,
     stopProgressAnimation
   ]);

@@ -1,7 +1,7 @@
 import { CharacterInfo, DiceResult } from '../types';
 import { generateFallbackInfo } from '../logic/gameLogic';
 import { ApiCapabilities, ApiKeys } from '../utils/apiKeyStore';
-import { proxyOpenRouterChat } from '../utils/apiClient';
+import { proxyTextChat } from '../utils/apiClient';
 import {
   buildCharacterInfoPrompts,
   buildEmergencyImagePrompt,
@@ -17,7 +17,6 @@ import { delay } from '../utils/asyncControl';
 interface ContractGenerationContext {
   apiKeys: ApiKeys;
   capabilities: ApiCapabilities;
-  openRouterModel: string;
   signal?: AbortSignal;
 }
 
@@ -26,17 +25,16 @@ export async function generateContractCharacterInfo(
   stylePrompt: string,
   context: ContractGenerationContext
 ): Promise<CharacterInfo> {
-  const { apiKeys, capabilities, openRouterModel, signal } = context;
+  const { apiKeys, capabilities, signal } = context;
   const { systemPrompt, userPrompt } = buildCharacterInfoPrompts(result, stylePrompt);
 
-  if (!capabilities.openRouter) {
-    logger.warn('[CharacterInfo] 未配置 OpenRouter API Key，使用本地角色文案兜底');
+  if (!capabilities.text) {
+    logger.warn('[CharacterInfo] 未配置文案模型 API Key，使用本地角色文案兜底');
     return generateFallbackInfo(result, stylePrompt);
   }
 
   logger.info('[CharacterInfo] 开始生成角色文案');
-  const data = await proxyOpenRouterChat(apiKeys.openRouter, {
-    model: openRouterModel,
+  const data = await proxyTextChat(apiKeys, {
     messages: [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: userPrompt }
@@ -66,17 +64,16 @@ export async function generateContractImagePrompt(
   info: CharacterInfo,
   context: ContractGenerationContext
 ): Promise<string> {
-  const { apiKeys, capabilities, openRouterModel, signal } = context;
+  const { apiKeys, capabilities, signal } = context;
   const characterInfoForPrompt = buildImagePromptUserInput(info);
 
-  if (!capabilities.openRouter) {
-    logger.warn('[ImagePrompt] 未配置 OpenRouter API Key，使用本地立绘提示词');
+  if (!capabilities.text) {
+    logger.warn('[ImagePrompt] 未配置文案模型 API Key，使用本地立绘提示词');
     return buildLocalImagePrompt(info);
   }
 
   logger.info('[ImagePrompt] 开始生成立绘提示词');
-  const openRouterData = await proxyOpenRouterChat(apiKeys.openRouter, {
-    model: openRouterModel,
+  const openRouterData = await proxyTextChat(apiKeys, {
     messages: [
       { role: 'system', content: ILLUSTRATOR_SYSTEM_PROMPT },
       { role: 'user', content: characterInfoForPrompt }

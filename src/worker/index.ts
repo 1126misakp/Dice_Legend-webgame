@@ -11,6 +11,7 @@ type ProxyTarget = {
 };
 
 const MAX_BODY_BYTES = 64 * 1024;
+const MIMO_TOKEN_PLAN_CHAT_URL = 'https://token-plan-cn.xiaomimimo.com/v1/chat/completions';
 
 class ProxyRequestError extends Error {
   code: string;
@@ -63,7 +64,7 @@ const targets: Record<string, ProxyTarget> = {
     })
   },
   '/api/mimo/tts': {
-    url: 'https://api.xiaomimimo.com/v1/chat/completions',
+    url: MIMO_TOKEN_PLAN_CHAT_URL,
     validatePayload: validateMimoTTSPayload,
     buildRequest: (payload, apiKey) => ({
       method: 'POST',
@@ -72,6 +73,18 @@ const targets: Record<string, ProxyTarget> = {
         'api-key': apiKey
       },
       body: JSON.stringify(pick(payload, ['model', 'messages', 'audio', 'stream']))
+    })
+  },
+  '/api/mimo/chat': {
+    url: MIMO_TOKEN_PLAN_CHAT_URL,
+    validatePayload: validateMimoChatPayload,
+    buildRequest: (payload, apiKey) => ({
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'api-key': apiKey
+      },
+      body: JSON.stringify(pick(payload, ['model', 'messages', 'max_completion_tokens', 'temperature', 'top_p', 'stream']))
     })
   }
 };
@@ -311,6 +324,29 @@ function validateMimoTTSPayload(payload: Record<string, unknown>): void {
   }
   if (!hasAssistantText) {
     throwInvalidPayload('messages 必须包含 assistant 合成台词');
+  }
+}
+
+function validateMimoChatPayload(payload: Record<string, unknown>): void {
+  requireNonEmptyString(payload.model, 'model');
+  const messages = requireNonEmptyArray(payload.messages, 'messages');
+  for (const message of messages) {
+    const chatMessage = requireRecord(message, 'messages[]');
+    requireNonEmptyString(chatMessage.role, 'messages[].role');
+    validateOpenRouterMessageContent(chatMessage.content, 'messages[].content');
+  }
+
+  if (!isFiniteNumber(payload.max_completion_tokens)) {
+    throwInvalidPayload('max_completion_tokens 必须是数字');
+  }
+  if (payload.temperature !== undefined && !isFiniteNumber(payload.temperature)) {
+    throwInvalidPayload('temperature 必须是数字');
+  }
+  if (payload.top_p !== undefined && !isFiniteNumber(payload.top_p)) {
+    throwInvalidPayload('top_p 必须是数字');
+  }
+  if (payload.stream !== undefined && typeof payload.stream !== 'boolean') {
+    throwInvalidPayload('stream 必须是布尔值');
   }
 }
 

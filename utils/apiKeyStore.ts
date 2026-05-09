@@ -3,22 +3,28 @@ export interface ApiKeys {
   openRouterModel: string;
   runningHub: string;
   mimo: string;
+  textProvider: TextProvider;
 }
 
 export interface ApiCapabilities {
   openRouter: boolean;
   runningHub: boolean;
   mimo: boolean;
+  text: boolean;
 }
+
+export type TextProvider = 'mimo' | 'openRouter';
 
 const STORAGE_KEY = 'diceLegend.apiKeys.v1';
 export const DEFAULT_OPENROUTER_MODEL = 'x-ai/grok-4.1-fast';
+export const DEFAULT_TEXT_PROVIDER: TextProvider = 'mimo';
 
 export const emptyApiKeys: ApiKeys = {
   openRouter: '',
   openRouterModel: DEFAULT_OPENROUTER_MODEL,
   runningHub: '',
-  mimo: ''
+  mimo: '',
+  textProvider: DEFAULT_TEXT_PROVIDER
 };
 
 type StoredApiKeys = Partial<ApiKeys> & {
@@ -26,11 +32,14 @@ type StoredApiKeys = Partial<ApiKeys> & {
 };
 
 function normalizeKeys(value: StoredApiKeys | null | undefined): ApiKeys {
+  const textProvider = value?.textProvider === 'openRouter' ? 'openRouter' : DEFAULT_TEXT_PROVIDER;
+
   return {
     openRouter: value?.openRouter?.trim() ?? '',
     openRouterModel: value?.openRouterModel?.trim() || DEFAULT_OPENROUTER_MODEL,
     runningHub: value?.runningHub?.trim() ?? '',
-    mimo: value?.mimo?.trim() || value?.miniMax?.trim() || ''
+    mimo: value?.mimo?.trim() || value?.miniMax?.trim() || '',
+    textProvider
   };
 }
 
@@ -62,9 +71,13 @@ export function clearApiKeys(): ApiKeys {
 }
 
 export function getApiCapabilities(keys: ApiKeys): ApiCapabilities {
+  const openRouter = keys.openRouter.trim().length > 0;
+  const mimo = keys.mimo.trim().length > 0;
+
   return {
-    openRouter: keys.openRouter.trim().length > 0,
+    openRouter,
     runningHub: keys.runningHub.trim().length > 0,
-    mimo: keys.mimo.trim().length > 0
+    mimo,
+    text: keys.textProvider === 'openRouter' ? openRouter : mimo
   };
 }

@@ -36,16 +36,17 @@ npm run dev
 
 项目使用用户自填 API Key 模式。打开网页后，在右上角「API 设置」中填写：
 
-- OpenRouter API Key：角色文案、立绘提示词、动态提示词
-- OpenRouter 模型：默认 `x-ai/grok-4.1-fast`，可按需改成你希望使用的大模型，主要影响文案生成
+- 文案供应商：默认 `MiMo Token Plan`，使用 `MiMo-V2.5-Pro`；也可切换到 OpenRouter 备用
+- OpenRouter API Key：切换到 OpenRouter 文案供应商时使用
+- OpenRouter 模型：默认 `x-ai/grok-4.1-fast`，仅在文案供应商切换到 OpenRouter 时生效
 - RunningHub API Key：角色立绘与动态化视频
-- MiMo API Key：角色语音生成
+- MiMo API Key：Token Plan Key，用于角色文案、立绘/动态提示词、语音台词和角色语音生成
 
 密钥默认保存在浏览器 `localStorage`，只适合个人设备。共享设备使用后请点击「清除密钥」。密钥不会写入 URL、不会进入前端构建产物，也不应提交到 Git 仓库。
 
 未填写对应 Key 时，功能会自动降级：
 
-- 无 OpenRouter：使用本地角色文案和提示词兜底
+- 无当前文案供应商 Key：使用本地角色文案和提示词兜底
 - 无 RunningHub：不生成立绘和动态化视频，角色卡显示文字占位
 - 无 MiMo：不生成语音，语音按钮显示缺失态
 

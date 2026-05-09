@@ -14,7 +14,7 @@ import { calculateDiceResult, upgradeProfession } from './logic/gameLogic';
 import { Dices, RefreshCw, Eye, MessageSquareQuote, Handshake, RotateCcw, Gift, ShieldCheck, Anchor, KeyRound } from 'lucide-react';
 import { audioService, Rarity } from './services/audioService';
 import { playClickSound } from './hooks/useButtonSound';
-import { ApiKeys, DEFAULT_OPENROUTER_MODEL, clearApiKeys, getApiCapabilities, loadApiKeys, saveApiKeys } from './utils/apiKeyStore';
+import { ApiKeys, clearApiKeys, getApiCapabilities, loadApiKeys, saveApiKeys } from './utils/apiKeyStore';
 import { useContractGeneration } from './hooks/useContractGeneration';
 
 export default function App() {
@@ -30,7 +30,6 @@ export default function App() {
   const [apiKeys, setApiKeys] = useState<ApiKeys>(() => loadApiKeys());
   const [isApiSettingsOpen, setIsApiSettingsOpen] = useState(false);
   const capabilities = getApiCapabilities(apiKeys);
-  const openRouterModel = apiKeys.openRouterModel || DEFAULT_OPENROUTER_MODEL;
   
   const [fixedDiceIndices, setFixedDiceIndices] = useState<number[]>([]);
   const [weightedDiceIndices, setWeightedDiceIndices] = useState<number[]>([]);
@@ -89,7 +88,6 @@ export default function App() {
   } = useContractGeneration({
       apiKeys,
       capabilities,
-      openRouterModel,
       onCharacterReady: (info) => {
           audioService.playSummonSound(info.rarity as Rarity);
           setGameState(GameState.SHOW_CARD);
@@ -397,7 +395,7 @@ export default function App() {
   }, [gameState]);
 
   const missingCapabilityLabels = [
-      !capabilities.openRouter && '文案',
+      !capabilities.text && '文案',
       !capabilities.runningHub && '立绘/动态',
       !capabilities.mimo && '语音'
   ].filter(Boolean).join('、');
@@ -489,7 +487,7 @@ export default function App() {
               </button>
               <button
                 onClick={() => setIsApiSettingsOpen(true)}
-                className={`w-10 h-10 md:w-11 md:h-11 rounded-xl transition-all flex items-center justify-center shrink-0 border ${capabilities.openRouter && capabilities.runningHub && capabilities.mimo ? 'bg-emerald-500/18 text-emerald-200 border-emerald-200/35 hover:bg-emerald-500/28' : 'bg-amber-500/18 text-amber-200 border-amber-200/35 hover:bg-amber-500/28'}`}
+                className={`w-10 h-10 md:w-11 md:h-11 rounded-xl transition-all flex items-center justify-center shrink-0 border ${capabilities.text && capabilities.runningHub && capabilities.mimo ? 'bg-emerald-500/18 text-emerald-200 border-emerald-200/35 hover:bg-emerald-500/28' : 'bg-amber-500/18 text-amber-200 border-amber-200/35 hover:bg-amber-500/28'}`}
                 title={missingCapabilityLabels ? `API 设置，缺少：${missingCapabilityLabels}` : 'API 设置'}
               >
                 <KeyRound size={22} />
@@ -528,7 +526,7 @@ export default function App() {
               Crest: {fixedDiceIndices.length}<br />
               Weighted: {weightedDiceIndices.length}
             </div>
-            {(!capabilities.openRouter || !capabilities.runningHub || !capabilities.mimo) && (
+            {(!capabilities.text || !capabilities.runningHub || !capabilities.mimo) && (
               <button
                 onClick={() => setIsApiSettingsOpen(true)}
                 className="w-full text-left text-[11px] leading-relaxed text-amber-100 font-bold bg-amber-500/16 rounded-xl px-3 py-2 hover:bg-amber-500/25 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]"
