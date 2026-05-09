@@ -55,6 +55,8 @@ export type ChatCompletionResponse = OpenRouterChatResponse;
 
 const MIMO_TEXT_MODEL = 'mimo-v2.5-pro';
 const DEFAULT_TIMEOUT_MS = 30000;
+const MIMO_TEXT_TIMEOUT_MS = 120000;
+const MIMO_TTS_TIMEOUT_MS = 120000;
 
 export class ApiClientError extends Error {
   code: string;
@@ -137,7 +139,7 @@ export function proxyRunningHubOutputs(apiKey: string, taskId: string, options?:
 }
 
 export function proxyMimoTTS(apiKey: string, body: unknown, options?: ApiClientOptions): Promise<MimoTTSResponse> {
-  return callProxy('/api/mimo/tts', apiKey, body, options);
+  return callProxy('/api/mimo/tts', apiKey, body, { timeoutMs: MIMO_TTS_TIMEOUT_MS, ...options });
 }
 
 export function proxyMimoChat(apiKey: string, body: unknown, options?: ApiClientOptions): Promise<ChatCompletionResponse> {
@@ -157,7 +159,7 @@ export function proxyTextChat(keys: ApiKeys, body: Record<string, unknown>, opti
     ...rest,
     model: MIMO_TEXT_MODEL,
     max_completion_tokens: typeof maxTokens === 'number' ? maxTokens : 10000
-  }, options);
+  }, { timeoutMs: MIMO_TEXT_TIMEOUT_MS, ...options });
 }
 
 export function getMissingApiKeyMessage(keys: ApiKeys): string | null {

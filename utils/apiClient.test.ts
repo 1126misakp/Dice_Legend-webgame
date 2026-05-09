@@ -1,12 +1,14 @@
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
 import { ApiKeys } from './apiKeyStore';
-import { proxyTextChat } from './apiClient';
+import { proxyMimoTTS, proxyTextChat } from './apiClient';
 
 const originalFetch = globalThis.fetch;
+const originalSetTimeout = globalThis.setTimeout;
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
+  globalThis.setTimeout = originalSetTimeout;
 });
 
 const baseKeys: ApiKeys = {
@@ -39,4 +41,48 @@ test('proxyTextChat 使用 MiMo Token Plan 小写模型 ID', async () => {
     model: 'mimo-v2.5-pro',
     max_completion_tokens: 1200
   });
+});
+
+test('proxyTextChat 调用 MiMo 文案时给慢响应保留 120 秒超时', async () => {
+  const timeoutValues: number[] = [];
+  globalThis.setTimeout = ((handler: TimerHandler, timeout?: number, ...args: unknown[]) => {
+    timeoutValues.push(Number(timeout));
+    return originalSetTimeout(handler, timeout, ...args);
+  }) as typeof setTimeout;
+  globalThis.fetch = (async () => Response.json({
+    ok: true,
+    data: { choices: [{ message: { content: 'ok' } }] }
+  })) as typeof fetch;
+
+  await proxyTextChat(baseKeys, {
+    messages: [{ role: 'user', content: '生成一个角色' }],
+    max_tokens: 1200,
+    temperature: 0.8
+  });
+
+  assert.deepEqual(timeoutValues, [120000]);
+});
+
+test('proxyMimoTTS 给语音合成保留 120 秒超时', async () => {
+  const timeoutValues: number[] = [];
+  globalThis.setTimeout = ((handler: TimerHandler, timeout?: number, ...args: unknown[]) => {
+    timeoutValues.push(Number(timeout));
+    return originalSetTimeout(handler, timeout, ...args);
+  }) as typeof setTimeout;
+  globalThis.fetch = (async () => Response.json({
+    ok: true,
+    data: { choices: [{ message: { audio: { data: 'base64-wav' } } }] }
+  })) as typeof fetch;
+
+  await proxyMimoTTS('tp-mimo-key', {
+    model: 'mimo-v2.5-tts-voicedesign',
+    messages: [
+      { role: 'user', content: '清澈的少女声线' },
+      { role: 'assistant', content: '命运选中了我。' }
+    ],
+    audio: { format: 'wav' },
+    stream: false
+  });
+
+  assert.deepEqual(timeoutValues, [120000]);
 });

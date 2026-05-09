@@ -431,7 +431,7 @@ export async function generateSpeechWithMimo(
       format: 'wav'
     },
     stream: false
-  }, { timeoutMs: 60000 });
+  });
 
   const audioData = data.choices?.[0]?.message?.audio?.data;
   if (!audioData) {
