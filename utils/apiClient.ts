@@ -53,7 +53,7 @@ export interface MimoTTSResponse {
 
 export type ChatCompletionResponse = OpenRouterChatResponse;
 
-const MIMO_TEXT_MODEL = 'MiMo-V2.5-Pro';
+const MIMO_TEXT_MODEL = 'mimo-v2.5-pro';
 const DEFAULT_TIMEOUT_MS = 30000;
 
 export class ApiClientError extends Error {

@@ -22,7 +22,7 @@ const keyFields: Array<{
 ];
 
 const textProviderOptions: Array<{ value: TextProvider; label: string; hint: string }> = [
-  { value: 'mimo', label: 'MiMo Token Plan', hint: '默认，使用 MiMo-V2.5-Pro' },
+  { value: 'mimo', label: 'MiMo Token Plan', hint: '默认，使用 mimo-v2.5-pro' },
   { value: 'openRouter', label: 'OpenRouter', hint: '备用，使用下方 OpenRouter 模型' }
 ];
 

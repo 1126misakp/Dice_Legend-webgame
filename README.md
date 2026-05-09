@@ -36,7 +36,7 @@ npm run dev
 
 项目使用用户自填 API Key 模式。打开网页后，在右上角「API 设置」中填写：
 
-- 文案供应商：默认 `MiMo Token Plan`，使用 `MiMo-V2.5-Pro`；也可切换到 OpenRouter 备用
+- 文案供应商：默认 `MiMo Token Plan`，使用 `mimo-v2.5-pro`；也可切换到 OpenRouter 备用
 - OpenRouter API Key：切换到 OpenRouter 文案供应商时使用
 - OpenRouter 模型：默认 `x-ai/grok-4.1-fast`，仅在文案供应商切换到 OpenRouter 时生效
 - RunningHub API Key：角色立绘与动态化视频

@@ -8,7 +8,7 @@ import { ApiKeys } from '../utils/apiKeyStore';
 import { proxyMimoTTS, proxyTextChat } from '../utils/apiClient';
 import { logger } from '../utils/logger';
 
-const MIMO_TTS_MODEL = 'MiMo-V2.5-TTS-VoiceDesign';
+const MIMO_TTS_MODEL = 'mimo-v2.5-tts-voicedesign';
 
 // 稀有度对应的语音数量
 export const VOICE_COUNT_BY_RARITY: Record<string, number> = {
