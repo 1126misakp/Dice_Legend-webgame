@@ -40,7 +40,8 @@ npm run dev
 - OpenRouter API Key：切换到 OpenRouter 文案供应商时使用
 - OpenRouter 模型：默认 `x-ai/grok-4.1-fast`，仅在文案供应商切换到 OpenRouter 时生效
 - RunningHub API Key：角色立绘与动态化视频
-- MiMo API Key：Token Plan Key，用于角色文案、立绘/动态提示词、语音台词和角色语音生成
+- MiMo Token Plan API Key：MiMo 文案模式下用于角色文案、立绘/动态提示词、语音台词和角色语音生成
+- MiMo 语音 API Key：OpenRouter 文案模式下用于官方 MiMo 语音生成，调用 `https://api.xiaomimimo.com/v1/chat/completions`
 
 密钥默认保存在浏览器 `localStorage`，只适合个人设备。共享设备使用后请点击「清除密钥」。密钥不会写入 URL、不会进入前端构建产物，也不应提交到 Git 仓库。
 

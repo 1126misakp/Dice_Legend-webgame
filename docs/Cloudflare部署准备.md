@@ -123,7 +123,7 @@ npm run deploy
 ## 当前风险与注意事项
 
 - 尚未由本轮自动化使用真实三方 Key 做端到端验收，这是当前最大剩余风险。
-- MiMo 当前使用 Token Plan 中国区专属 Base URL：`https://token-plan-cn.xiaomimimo.com/v1`。若浏览器返回鉴权失败，优先检查用户 Key 是否为 Token Plan `tp-` Key，且具备 `mimo-v2.5-pro` 与 `mimo-v2.5-tts-voicedesign` 调用权限。
+- MiMo 文案模式使用 Token Plan 中国区专属 Base URL：`https://token-plan-cn.xiaomimimo.com/v1`。OpenRouter 文案模式下，语音生成使用官方 Base URL：`https://api.xiaomimimo.com/v1`，并使用单独保存的 MiMo 语音 API Key。
 - Worker 当前只允许同源或本地开发来源访问 `/api/*`，正式部署后应从 Worker 域名或绑定域名访问页面。
 - 用户 API Key 存在浏览器 `localStorage`，适合个人设备，不适合共享设备长期保存。
 - 如果需要自定义域名，应先在 Cloudflare Dashboard 绑定域名，再用部署后的页面做完整验收。

@@ -12,6 +12,7 @@ type ProxyTarget = {
 
 const MAX_BODY_BYTES = 64 * 1024;
 const MIMO_TOKEN_PLAN_CHAT_URL = 'https://token-plan-cn.xiaomimimo.com/v1/chat/completions';
+const MIMO_OFFICIAL_CHAT_URL = 'https://api.xiaomimimo.com/v1/chat/completions';
 
 class ProxyRequestError extends Error {
   code: string;
@@ -65,6 +66,18 @@ const targets: Record<string, ProxyTarget> = {
   },
   '/api/mimo/tts': {
     url: MIMO_TOKEN_PLAN_CHAT_URL,
+    validatePayload: validateMimoTTSPayload,
+    buildRequest: (payload, apiKey) => ({
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'api-key': apiKey
+      },
+      body: JSON.stringify(pick(payload, ['model', 'messages', 'audio', 'stream']))
+    })
+  },
+  '/api/mimo/tts-official': {
+    url: MIMO_OFFICIAL_CHAT_URL,
     validatePayload: validateMimoTTSPayload,
     buildRequest: (payload, apiKey) => ({
       method: 'POST',

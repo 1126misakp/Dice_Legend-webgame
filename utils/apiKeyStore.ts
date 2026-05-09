@@ -3,6 +3,7 @@ export interface ApiKeys {
   openRouterModel: string;
   runningHub: string;
   mimo: string;
+  mimoVoice: string;
   textProvider: TextProvider;
 }
 
@@ -24,6 +25,7 @@ export const emptyApiKeys: ApiKeys = {
   openRouterModel: DEFAULT_OPENROUTER_MODEL,
   runningHub: '',
   mimo: '',
+  mimoVoice: '',
   textProvider: DEFAULT_TEXT_PROVIDER
 };
 
@@ -39,6 +41,7 @@ function normalizeKeys(value: StoredApiKeys | null | undefined): ApiKeys {
     openRouterModel: value?.openRouterModel?.trim() || DEFAULT_OPENROUTER_MODEL,
     runningHub: value?.runningHub?.trim() ?? '',
     mimo: value?.mimo?.trim() || value?.miniMax?.trim() || '',
+    mimoVoice: value?.mimoVoice?.trim() ?? '',
     textProvider
   };
 }
@@ -72,12 +75,14 @@ export function clearApiKeys(): ApiKeys {
 
 export function getApiCapabilities(keys: ApiKeys): ApiCapabilities {
   const openRouter = keys.openRouter.trim().length > 0;
-  const mimo = keys.mimo.trim().length > 0;
+  const tokenPlanMimo = keys.mimo.trim().length > 0;
+  const officialMimoVoice = keys.mimoVoice.trim().length > 0;
+  const mimo = keys.textProvider === 'openRouter' ? officialMimoVoice : tokenPlanMimo;
 
   return {
     openRouter,
     runningHub: keys.runningHub.trim().length > 0,
     mimo,
-    text: keys.textProvider === 'openRouter' ? openRouter : mimo
+    text: keys.textProvider === 'openRouter' ? openRouter : tokenPlanMimo
   };
 }

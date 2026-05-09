@@ -261,6 +261,23 @@ test('MiMo TTS 代理使用 Token Plan 专属域名并只转发白名单字段',
   });
 });
 
+test('MiMo 官方 TTS 代理使用官方域名并只转发白名单字段', async () => {
+  const records = mockUpstream(Response.json({
+    choices: [{ message: { audio: { data: 'base64-wav' } } }]
+  }, { status: 200 }));
+
+  const { response, body } = await callWorker('/api/mimo/tts-official', postJson({
+    ...validMimoTTSBody,
+    injected: 'should-not-forward'
+  }, 'official-mimo-key'));
+
+  assert.equal(response.status, 200);
+  assert.equal(body.ok, true);
+  assert.equal(records[0].input, 'https://api.xiaomimimo.com/v1/chat/completions');
+  assert.equal((records[0].init?.headers as Record<string, string>)['api-key'], 'official-mimo-key');
+  assert.deepEqual(JSON.parse(records[0].init?.body as string), validMimoTTSBody);
+});
+
 test('MiMo 文案代理使用 Token Plan 专属域名和小写模型 ID', async () => {
   const records = mockUpstream(Response.json({
     choices: [{ message: { content: '{"name":"测试角色"}' } }]

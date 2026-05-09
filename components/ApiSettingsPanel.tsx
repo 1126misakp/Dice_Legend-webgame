@@ -12,13 +12,14 @@ interface Props {
 }
 
 const keyFields: Array<{
-  id: 'openRouter' | 'runningHub' | 'mimo';
+  id: 'openRouter' | 'runningHub' | 'mimo' | 'mimoVoice';
   label: string;
   hint: string;
 }> = [
   { id: 'openRouter', label: 'OpenRouter API Key', hint: '角色文案、立绘提示词、动态提示词' },
   { id: 'runningHub', label: 'RunningHub API Key', hint: '角色立绘与动态化视频' },
-  { id: 'mimo', label: 'MiMo API Key', hint: 'Token Plan 文案与角色语音生成' }
+  { id: 'mimo', label: 'MiMo Token Plan API Key', hint: 'MiMo 模式文案与语音生成' },
+  { id: 'mimoVoice', label: 'MiMo 语音 API Key', hint: 'OpenRouter 模式语音生成' }
 ];
 
 const textProviderOptions: Array<{ value: TextProvider; label: string; hint: string }> = [
@@ -28,6 +29,20 @@ const textProviderOptions: Array<{ value: TextProvider; label: string; hint: str
 
 export function isOpenRouterSettingDisabled(textProvider: TextProvider): boolean {
   return textProvider === 'mimo';
+}
+
+export function isKeyFieldDisabled(fieldId: 'openRouter' | 'runningHub' | 'mimo' | 'mimoVoice', textProvider: TextProvider): boolean {
+  if (fieldId === 'openRouter') return textProvider === 'mimo';
+  if (fieldId === 'mimo') return textProvider === 'openRouter';
+  if (fieldId === 'mimoVoice') return textProvider === 'mimo';
+  return false;
+}
+
+function getDisabledHint(fieldId: 'openRouter' | 'runningHub' | 'mimo' | 'mimoVoice', textProvider: TextProvider): string | null {
+  if (fieldId === 'openRouter' && textProvider === 'mimo') return '当前文案供应商为 MiMo，暂不生效';
+  if (fieldId === 'mimo' && textProvider === 'openRouter') return '当前文案供应商为 OpenRouter，暂不生效';
+  if (fieldId === 'mimoVoice' && textProvider === 'mimo') return '仅 OpenRouter 文案模式下用于语音';
+  return null;
 }
 
 const ApiSettingsPanel: React.FC<Props> = ({ apiKeys, capabilities, open, onClose, onSave, onClear }) => {
@@ -97,25 +112,25 @@ const ApiSettingsPanel: React.FC<Props> = ({ apiKeys, capabilities, open, onClos
           </label>
 
           {keyFields.map(field => (
-            <label key={field.id} className={`block ${field.id === 'openRouter' && openRouterDisabled ? 'opacity-75' : ''}`}>
+            <label key={field.id} className={`block ${isKeyFieldDisabled(field.id, draft.textProvider) ? 'opacity-75' : ''}`}>
               <div className="flex items-center justify-between mb-1">
-                <span className={`text-sm font-bold ${field.id === 'openRouter' ? openRouterDisabledLabelClass : 'text-[#3b2410]'}`}>{field.label}</span>
-                <span className={`hidden sm:inline text-[11px] ${field.id === 'openRouter' ? openRouterDisabledHintClass : 'text-[#7c5a2b]'}`}>
-                  {field.id === 'openRouter' && openRouterDisabled ? '当前文案供应商为 MiMo，暂不生效' : field.hint}
+                <span className={`text-sm font-bold ${isKeyFieldDisabled(field.id, draft.textProvider) ? openRouterDisabledLabelClass : 'text-[#3b2410]'}`}>{field.label}</span>
+                <span className={`hidden sm:inline text-[11px] ${isKeyFieldDisabled(field.id, draft.textProvider) ? openRouterDisabledHintClass : 'text-[#7c5a2b]'}`}>
+                  {getDisabledHint(field.id, draft.textProvider) || field.hint}
                 </span>
               </div>
-              <div className={`sm:hidden text-[11px] mb-1 ${field.id === 'openRouter' ? openRouterDisabledHintClass : 'text-[#7c5a2b]'}`}>
-                {field.id === 'openRouter' && openRouterDisabled ? '当前文案供应商为 MiMo，暂不生效' : field.hint}
+              <div className={`sm:hidden text-[11px] mb-1 ${isKeyFieldDisabled(field.id, draft.textProvider) ? openRouterDisabledHintClass : 'text-[#7c5a2b]'}`}>
+                {getDisabledHint(field.id, draft.textProvider) || field.hint}
               </div>
               <input
                 type="password"
                 value={draft[field.id]}
                 onChange={e => setDraft(prev => ({ ...prev, [field.id]: e.target.value }))}
                 placeholder="粘贴你的 API Key"
-                disabled={field.id === 'openRouter' && openRouterDisabled}
+                disabled={isKeyFieldDisabled(field.id, draft.textProvider)}
                 autoComplete="off"
                 spellCheck={false}
-                className={field.id === 'openRouter' && openRouterDisabled ? disabledInputClass : enabledInputClass}
+                className={isKeyFieldDisabled(field.id, draft.textProvider) ? disabledInputClass : enabledInputClass}
               />
             </label>
           ))}
@@ -148,7 +163,7 @@ const ApiSettingsPanel: React.FC<Props> = ({ apiKeys, capabilities, open, onClos
           <button
             onClick={() => {
               onClear();
-              setDraft({ openRouter: '', openRouterModel: DEFAULT_OPENROUTER_MODEL, runningHub: '', mimo: '', textProvider: DEFAULT_TEXT_PROVIDER });
+              setDraft({ openRouter: '', openRouterModel: DEFAULT_OPENROUTER_MODEL, runningHub: '', mimo: '', mimoVoice: '', textProvider: DEFAULT_TEXT_PROVIDER });
             }}
             className="px-4 py-2.5 rounded-xl bg-[#1b2d4f]/12 text-[#34405c] font-bold hover:bg-[#1b2d4f]/20 flex items-center justify-center gap-2 border border-[#1b2d4f]/15"
           >

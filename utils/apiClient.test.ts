@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
 import { ApiKeys } from './apiKeyStore';
-import { proxyMimoTTS, proxyTextChat } from './apiClient';
+import { getMimoVoiceApiKey, proxyMimoOfficialTTS, proxyMimoTTS, proxyTextChat } from './apiClient';
 
 const originalFetch = globalThis.fetch;
 const originalSetTimeout = globalThis.setTimeout;
@@ -16,6 +16,7 @@ const baseKeys: ApiKeys = {
   openRouterModel: 'x-ai/grok-4.1-fast',
   runningHub: '',
   mimo: 'tp-mimo-key',
+  mimoVoice: 'official-voice-key',
   textProvider: 'mimo'
 };
 
@@ -85,4 +86,39 @@ test('proxyMimoTTS 给语音合成保留 120 秒超时', async () => {
   });
 
   assert.deepEqual(timeoutValues, [120000]);
+});
+
+test('proxyMimoOfficialTTS 使用官方语音代理并保留 120 秒超时', async () => {
+  const timeoutValues: number[] = [];
+  const requests: Array<{ input: string | URL | Request; init?: RequestInit }> = [];
+  globalThis.setTimeout = ((handler: TimerHandler, timeout?: number, ...args: unknown[]) => {
+    timeoutValues.push(Number(timeout));
+    return originalSetTimeout(handler, timeout, ...args);
+  }) as typeof setTimeout;
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    requests.push({ input, init });
+    return Response.json({
+      ok: true,
+      data: { choices: [{ message: { audio: { data: 'base64-wav' } } }] }
+    });
+  }) as typeof fetch;
+
+  await proxyMimoOfficialTTS('official-voice-key', {
+    model: 'mimo-v2.5-tts-voicedesign',
+    messages: [
+      { role: 'user', content: '清澈的少女声线' },
+      { role: 'assistant', content: '命运选中了我。' }
+    ],
+    audio: { format: 'wav' },
+    stream: false
+  });
+
+  assert.equal(requests[0].input, '/api/mimo/tts-official');
+  assert.equal((requests[0].init?.headers as Record<string, string>)['X-User-Api-Key'], 'official-voice-key');
+  assert.deepEqual(timeoutValues, [120000]);
+});
+
+test('getMimoVoiceApiKey 根据文案供应商选择不同语音 Key', () => {
+  assert.equal(getMimoVoiceApiKey(baseKeys), 'tp-mimo-key');
+  assert.equal(getMimoVoiceApiKey({ ...baseKeys, textProvider: 'openRouter' }), 'official-voice-key');
 });

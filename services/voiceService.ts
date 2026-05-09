@@ -5,7 +5,7 @@
 
 import { CharacterInfo, SkillType, VoiceData, CharacterVoices } from '../types';
 import { ApiKeys } from '../utils/apiKeyStore';
-import { proxyMimoTTS, proxyTextChat } from '../utils/apiClient';
+import { getMimoVoiceApiKey, proxyMimoOfficialTTS, proxyMimoTTS, proxyTextChat } from '../utils/apiClient';
 import { logger } from '../utils/logger';
 
 const MIMO_TTS_MODEL = 'mimo-v2.5-tts-voicedesign';
@@ -417,11 +417,12 @@ function normalizeVoiceConfig(value: unknown): Record<string, string> {
 export async function generateSpeechWithMimo(
   mimoApiKey: string,
   voicePrompt: string,
-  text: string
+  text: string,
+  useOfficialEndpoint = false
 ): Promise<{ voiceId: string; audioData: string }> {
   logger.info('[VoiceService] 调用 MiMo TTS API', { text });
 
-  const data = await proxyMimoTTS(mimoApiKey, {
+  const requestBody = {
     model: MIMO_TTS_MODEL,
     messages: [
       { role: 'user', content: voicePrompt },
@@ -431,7 +432,10 @@ export async function generateSpeechWithMimo(
       format: 'wav'
     },
     stream: false
-  });
+  };
+  const data = useOfficialEndpoint
+    ? await proxyMimoOfficialTTS(mimoApiKey, requestBody)
+    : await proxyMimoTTS(mimoApiKey, requestBody);
 
   const audioData = data.choices?.[0]?.message?.audio?.data;
   if (!audioData) {
@@ -457,8 +461,9 @@ export async function generateCharacterVoices(
   onProgress?: (current: number, total: number, skillType: SkillType) => void
 ): Promise<VoiceGenerationResult> {
   try {
-    if (!apiKeys.mimo.trim()) {
-      return { success: false, error: '未配置 MiMo API Key' };
+    const mimoVoiceApiKey = getMimoVoiceApiKey(apiKeys);
+    if (!mimoVoiceApiKey.trim()) {
+      return { success: false, error: '未配置 MiMo 语音 API Key' };
     }
 
     logger.info('[VoiceService] 开始生成角色语音', characterInfo.name);
@@ -481,7 +486,12 @@ export async function generateCharacterVoices(
       onProgress?.(i + 1, skillTypes.length, skillType);
       logger.info(`[VoiceService] 生成${getSkillTypeName(skillType)}语音`, line);
 
-      const result = await generateSpeechWithMimo(apiKeys.mimo, voicePrompt, line);
+      const result = await generateSpeechWithMimo(
+        mimoVoiceApiKey,
+        voicePrompt,
+        line,
+        apiKeys.textProvider === 'openRouter'
+      );
 
       voices.push({
         voiceId: result.voiceId,

@@ -5,6 +5,7 @@ type ApiEndpoint =
   | '/api/runninghub/run'
   | '/api/runninghub/outputs'
   | '/api/mimo/tts'
+  | '/api/mimo/tts-official'
   | '/api/mimo/chat';
 
 interface ProxySuccess<T> {
@@ -142,8 +143,16 @@ export function proxyMimoTTS(apiKey: string, body: unknown, options?: ApiClientO
   return callProxy('/api/mimo/tts', apiKey, body, { timeoutMs: MIMO_TTS_TIMEOUT_MS, ...options });
 }
 
+export function proxyMimoOfficialTTS(apiKey: string, body: unknown, options?: ApiClientOptions): Promise<MimoTTSResponse> {
+  return callProxy('/api/mimo/tts-official', apiKey, body, { timeoutMs: MIMO_TTS_TIMEOUT_MS, ...options });
+}
+
 export function proxyMimoChat(apiKey: string, body: unknown, options?: ApiClientOptions): Promise<ChatCompletionResponse> {
   return callProxy('/api/mimo/chat', apiKey, body, options);
+}
+
+export function getMimoVoiceApiKey(keys: ApiKeys): string {
+  return keys.textProvider === 'openRouter' ? keys.mimoVoice : keys.mimo;
 }
 
 export function proxyTextChat(keys: ApiKeys, body: Record<string, unknown>, options?: ApiClientOptions): Promise<ChatCompletionResponse> {
@@ -166,6 +175,6 @@ export function getMissingApiKeyMessage(keys: ApiKeys): string | null {
   if (keys.textProvider === 'openRouter' && !keys.openRouter) return '未配置 OpenRouter API Key，角色文案将使用本地兜底。';
   if (keys.textProvider === 'mimo' && !keys.mimo) return '未配置 MiMo API Key，角色文案将使用本地兜底。';
   if (!keys.runningHub) return '未配置 RunningHub API Key，立绘和动态化会缺失。';
-  if (!keys.mimo) return '未配置 MiMo API Key，语音会缺失。';
+  if (!getMimoVoiceApiKey(keys)) return '未配置 MiMo 语音 API Key，语音会缺失。';
   return null;
 }
