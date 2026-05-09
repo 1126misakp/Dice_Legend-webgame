@@ -26,6 +26,10 @@ const textProviderOptions: Array<{ value: TextProvider; label: string; hint: str
   { value: 'openRouter', label: 'OpenRouter', hint: '备用，使用下方 OpenRouter 模型' }
 ];
 
+export function isOpenRouterSettingDisabled(textProvider: TextProvider): boolean {
+  return textProvider === 'mimo';
+}
+
 const ApiSettingsPanel: React.FC<Props> = ({ apiKeys, capabilities, open, onClose, onSave, onClear }) => {
   const [draft, setDraft] = useState<ApiKeys>(apiKeys);
 
@@ -40,6 +44,12 @@ const ApiSettingsPanel: React.FC<Props> = ({ apiKeys, capabilities, open, onClos
     { label: '立绘/动态', enabled: capabilities.runningHub },
     { label: '语音', enabled: capabilities.mimo }
   ];
+  const openRouterDisabled = isOpenRouterSettingDisabled(draft.textProvider);
+  const openRouterDisabledLabelClass = openRouterDisabled ? 'text-slate-500' : 'text-[#3b2410]';
+  const openRouterDisabledHintClass = openRouterDisabled ? 'text-slate-500/80' : 'text-[#7c5a2b]';
+  const inputBaseClass = 'w-full rounded-xl border px-3 py-2.5 text-sm outline-none focus:border-blue-700 focus:ring-2 focus:ring-blue-900/10';
+  const enabledInputClass = `${inputBaseClass} border-amber-900/20 bg-white/70 text-slate-900`;
+  const disabledInputClass = `${inputBaseClass} cursor-not-allowed border-slate-400/30 bg-slate-200/65 text-slate-500 shadow-inner`;
 
   return (
     <div className="fixed inset-0 z-[180] bg-black/70 backdrop-blur-sm flex items-center justify-center p-3 md:p-4" onClick={onClose}>
@@ -87,37 +97,45 @@ const ApiSettingsPanel: React.FC<Props> = ({ apiKeys, capabilities, open, onClos
           </label>
 
           {keyFields.map(field => (
-            <label key={field.id} className="block">
+            <label key={field.id} className={`block ${field.id === 'openRouter' && openRouterDisabled ? 'opacity-75' : ''}`}>
               <div className="flex items-center justify-between mb-1">
-                <span className="text-sm font-bold text-[#3b2410]">{field.label}</span>
-                <span className="hidden sm:inline text-[11px] text-[#7c5a2b]">{field.hint}</span>
+                <span className={`text-sm font-bold ${field.id === 'openRouter' ? openRouterDisabledLabelClass : 'text-[#3b2410]'}`}>{field.label}</span>
+                <span className={`hidden sm:inline text-[11px] ${field.id === 'openRouter' ? openRouterDisabledHintClass : 'text-[#7c5a2b]'}`}>
+                  {field.id === 'openRouter' && openRouterDisabled ? '当前文案供应商为 MiMo，暂不生效' : field.hint}
+                </span>
               </div>
-              <div className="sm:hidden text-[11px] text-[#7c5a2b] mb-1">{field.hint}</div>
+              <div className={`sm:hidden text-[11px] mb-1 ${field.id === 'openRouter' ? openRouterDisabledHintClass : 'text-[#7c5a2b]'}`}>
+                {field.id === 'openRouter' && openRouterDisabled ? '当前文案供应商为 MiMo，暂不生效' : field.hint}
+              </div>
               <input
                 type="password"
                 value={draft[field.id]}
                 onChange={e => setDraft(prev => ({ ...prev, [field.id]: e.target.value }))}
                 placeholder="粘贴你的 API Key"
+                disabled={field.id === 'openRouter' && openRouterDisabled}
                 autoComplete="off"
                 spellCheck={false}
-                className="w-full rounded-xl border border-amber-900/20 bg-white/70 px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-blue-700 focus:ring-2 focus:ring-blue-900/10"
+                className={field.id === 'openRouter' && openRouterDisabled ? disabledInputClass : enabledInputClass}
               />
             </label>
           ))}
 
-          <label className="block">
+          <label className={`block ${openRouterDisabled ? 'opacity-75' : ''}`}>
             <div className="flex items-center justify-between mb-1">
-              <span className="text-sm font-bold text-[#3b2410]">OpenRouter 模型</span>
-              <span className="text-[11px] text-[#7c5a2b]">主要用于文案生成</span>
+              <span className={`text-sm font-bold ${openRouterDisabledLabelClass}`}>OpenRouter 模型</span>
+              <span className={`text-[11px] ${openRouterDisabledHintClass}`}>
+                {openRouterDisabled ? '当前文案供应商为 MiMo，暂不生效' : '主要用于文案生成'}
+              </span>
             </div>
             <input
               type="text"
               value={draft.openRouterModel}
               onChange={e => setDraft(prev => ({ ...prev, openRouterModel: e.target.value }))}
               placeholder={DEFAULT_OPENROUTER_MODEL}
+              disabled={openRouterDisabled}
               autoComplete="off"
               spellCheck={false}
-              className="w-full rounded-xl border border-amber-900/20 bg-white/70 px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-blue-700 focus:ring-2 focus:ring-blue-900/10"
+              className={openRouterDisabled ? disabledInputClass : enabledInputClass}
             />
           </label>
 
