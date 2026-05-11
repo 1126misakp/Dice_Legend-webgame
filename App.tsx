@@ -16,7 +16,7 @@ import { audioService, Rarity } from './services/audioService';
 import { playClickSound } from './hooks/useButtonSound';
 import { ApiKeys, clearApiKeys, getApiCapabilities, loadApiKeys, saveApiKeys } from './utils/apiKeyStore';
 import { useContractGeneration } from './hooks/useContractGeneration';
-import { getButtonAuraFrameClass, isOverflowAuraRarity } from './components/auraLayout';
+import { getButtonAuraFrameClass, getContainedButtonAuraClass, isOverflowAuraRarity } from './components/auraLayout';
 
 export default function App() {
   const diceRef = useRef<DiceCanvasRef>(null);
@@ -626,17 +626,12 @@ export default function App() {
                             <div className="grid grid-cols-[minmax(0,3fr)_minmax(68px,1fr)] gap-2.5 sm:gap-3">
                                 {/* 缔结契约按钮 - 带粒子特效和稀有度颜色 - 占据更多空间 */}
                                 <div className="flex-[3] relative overflow-visible">
-                                    {/* 按钮外沿余辉 */}
-                                    <div className={getButtonAuraFrameClass(rarity, 'rewardChoice')}>
-                                        <ThreeRarityAura rarity={rarity} intensity={overflowAura ? 'burst' : 'large'} />
-                                    </div>
-
                                     <button
                                         onClick={handleChooseContract}
                                         className={`relative z-10 ${contractButtonClass}`}
                                     >
                                         {/* 按钮内能量阵 */}
-                                        <div className={`absolute -inset-x-8 -inset-y-6 z-0 mix-blend-screen pointer-events-none ${overflowAura ? 'opacity-95' : 'opacity-75'}`}>
+                                        <div className={getContainedButtonAuraClass(rarity)}>
                                             <ThreeRarityAura rarity={rarity} intensity="normal" />
                                         </div>
                                         <div className="absolute inset-0 z-[1] pointer-events-none bg-[radial-gradient(ellipse_at_50%_110%,rgba(255,255,255,0.45),transparent_58%),linear-gradient(180deg,rgba(255,255,255,0.22),transparent_42%,rgba(0,0,0,0.18))]" />
@@ -672,7 +667,7 @@ export default function App() {
                     );
                 })()}
 
-                {/* Button Container with Relative Positioning for Controls */}
+                {/* 底部按钮容器 */}
 	                <div className="relative w-full group flex gap-2">
                     {/* 取消召唤/重投小按钮 - 仅在 CONTRACT_PENDING 状态显示 */}
                     {gameState === GameState.CONTRACT_PENDING && (
