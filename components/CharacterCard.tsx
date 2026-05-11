@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { CharacterInfo } from '../types';
-import { playAudioData } from '../services/voiceService';
+import { getAutoPlayVoice, playAudioData } from '../services/voiceService';
 import { ApiCapabilities, ApiKeys } from '../utils/apiKeyStore';
 import { logger } from '../utils/logger';
 import { downloadMediaFile } from '../utils/mediaDownload';
@@ -28,7 +28,7 @@ interface Props {
 const CharacterCard: React.FC<Props> = ({ info, onClose, apiKeys, capabilities }) => {
   const [showFullArt, setShowFullArt] = useState(false);
   const [isLongPressing, setIsLongPressing] = useState(false);
-  const [hasPlayedEntrance, setHasPlayedEntrance] = useState(false);
+  const [playedUltimateVoiceKey, setPlayedUltimateVoiceKey] = useState<string | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
 
   const {
@@ -50,24 +50,25 @@ const CharacterCard: React.FC<Props> = ({ info, onClose, apiKeys, capabilities }
   const theme = rarityThemes[info.rarity as keyof typeof rarityThemes] || rarityThemes.R;
 
   useEffect(() => {
-    if (hasPlayedEntrance) return;
+    const autoPlayVoice = getAutoPlayVoice(info.voices);
+    if (!autoPlayVoice) return;
 
-    const entranceVoice = info.voices?.voices?.find(voice => voice.skillType === 'entrance');
-    if (!entranceVoice) return;
+    const voiceKey = `${info.name}-${autoPlayVoice.voiceId}-${autoPlayVoice.audioDataHex.length}`;
+    if (playedUltimateVoiceKey === voiceKey) return;
 
-    logger.debug('[Voice] 播放出场语音', entranceVoice.line);
-    setHasPlayedEntrance(true);
+    logger.debug('[Voice] 自动播放奥义语音', autoPlayVoice.line);
+    setPlayedUltimateVoiceKey(voiceKey);
 
     const timer = window.setTimeout(async () => {
       try {
-        await playAudioData(entranceVoice.audioDataHex);
+        await playAudioData(autoPlayVoice.audioDataHex);
       } catch (error) {
-        logger.error('[Voice] 出场语音播放失败', error);
+        logger.error('[Voice] 奥义语音播放失败', error);
       }
     }, 500);
 
     return () => window.clearTimeout(timer);
-  }, [info.voices, hasPlayedEntrance]);
+  }, [info.name, info.voices, playedUltimateVoiceKey]);
 
   const downloadAll = async (event: React.MouseEvent) => {
     event.stopPropagation();

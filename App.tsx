@@ -26,7 +26,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [peekMode, setPeekMode] = useState(false);
   const [isStyleOpen, setIsStyleOpen] = useState(false);
-  const [stylePrompt, setStylePrompt] = useState('火焰纹章风格+西式幻想RPG');
+  const [stylePrompt, setStylePrompt] = useState('西式幻想');
   const [inventory, setInventory] = useState<Inventory>({ crests: 1, weightedDice: 1 });
   const [apiKeys, setApiKeys] = useState<ApiKeys>(() => loadApiKeys());
   const [isApiSettingsOpen, setIsApiSettingsOpen] = useState(false);

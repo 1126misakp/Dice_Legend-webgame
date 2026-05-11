@@ -23,6 +23,7 @@ const baseInfo: CharacterInfo = {
 
 test('立绘系统提示词要求输出中文自然语句并覆盖固定结构', () => {
   assert.match(ILLUSTRATOR_SYSTEM_PROMPT, /中文自然语句/);
+  assert.match(ILLUSTRATOR_SYSTEM_PROMPT, /必须按顺序包含以下内容/);
   assert.match(ILLUSTRATOR_SYSTEM_PROMPT, /人物主体/);
   assert.match(ILLUSTRATOR_SYSTEM_PROMPT, /风格/);
   assert.match(ILLUSTRATOR_SYSTEM_PROMPT, /必须加入的提示词/);

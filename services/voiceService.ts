@@ -100,6 +100,14 @@ export async function playHexAudio(hexString: string): Promise<void> {
 }
 
 /**
+ * 角色立绘生成完成后自动播放的语音。
+ * 用户看到角色卡时用奥义强化反馈，避免默认播放出场语音。
+ */
+export function getAutoPlayVoice(voices?: CharacterVoices): VoiceData | undefined {
+  return voices?.voices.find(voice => voice.skillType === 'ultimate');
+}
+
+/**
  * 根据稀有度获取需要生成的技能类型列表
  * 所有稀有度都包含出场语音
  */
