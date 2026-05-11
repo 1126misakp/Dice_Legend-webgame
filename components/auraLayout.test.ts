@@ -14,13 +14,16 @@ test('按钮外光环以按钮中心为锚点', () => {
 
   assert.match(className, /left-1\/2/);
   assert.match(className, /-translate-x-1\/2/);
+  assert.match(className, /w-\[calc\(100%\+8rem\)\]/);
+  assert.match(className, /md:h-52/);
   assert.doesNotMatch(className, /-inset-x-16/);
 });
 
-test('底部召唤按钮光环不会依赖整排按钮宽度', () => {
+test('底部召唤按钮光环扩大到能容纳远端轨迹', () => {
   const className = getButtonAuraFrameClass('UR', 'bottomMain');
 
   assert.match(className, /left-1\/2/);
-  assert.match(className, /w-\[calc\(100%\+2\.5rem\)\]/);
+  assert.match(className, /w-\[calc\(100%\+14rem\)\]/);
+  assert.match(className, /md:h-64/);
   assert.doesNotMatch(className, /right-/);
 });
