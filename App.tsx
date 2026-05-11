@@ -16,6 +16,7 @@ import { audioService, Rarity } from './services/audioService';
 import { playClickSound } from './hooks/useButtonSound';
 import { ApiKeys, clearApiKeys, getApiCapabilities, loadApiKeys, saveApiKeys } from './utils/apiKeyStore';
 import { useContractGeneration } from './hooks/useContractGeneration';
+import { getButtonAuraFrameClass, isOverflowAuraRarity } from './components/auraLayout';
 
 export default function App() {
   const diceRef = useRef<DiceCanvasRef>(null);
@@ -399,7 +400,6 @@ export default function App() {
       !capabilities.runningHub && '立绘/动态',
       !capabilities.mimo && '语音'
   ].filter(Boolean).join('、');
-  const isOverflowAuraRarity = (rarity?: string) => rarity === 'SSR' || rarity === 'UR';
   const isRewardChoice = gameState === GameState.REWARD_CHOICE;
 
   return (
@@ -627,7 +627,7 @@ export default function App() {
                                 {/* 缔结契约按钮 - 带粒子特效和稀有度颜色 - 占据更多空间 */}
                                 <div className="flex-[3] relative overflow-visible">
                                     {/* 按钮外沿余辉 */}
-                                    <div className={`absolute top-1/2 -translate-y-1/2 pointer-events-none z-0 ${overflowAura ? '-inset-x-16 h-44 opacity-100' : '-inset-x-5 h-28 opacity-50 blur-[1px]'}`}>
+                                    <div className={getButtonAuraFrameClass(rarity, 'rewardChoice')}>
                                         <ThreeRarityAura rarity={rarity} intensity={overflowAura ? 'burst' : 'large'} />
                                     </div>
 
@@ -672,15 +672,8 @@ export default function App() {
                     );
                 })()}
 
-                {/* Button Container with Relative Positioning for Particles */}
+                {/* Button Container with Relative Positioning for Controls */}
 	                <div className="relative w-full group flex gap-2">
-                    {/* External Surrounding Particles (Behind Main Button) - 扩大范围，避免明显矩形裁剪 */}
-	                    {gameState === GameState.CONTRACT_PENDING && result && (
-	                      <div className={`absolute top-1/2 -translate-y-1/2 pointer-events-none z-0 ${isOverflowAuraRarity(result.rarity) ? '-inset-x-16 h-48 opacity-100' : '-inset-x-7 h-32 opacity-45 blur-[1px]'}`}>
-		                          <ThreeRarityAura rarity={result.rarity} intensity={isOverflowAuraRarity(result.rarity) ? 'burst' : 'large'} />
-	                      </div>
-	                    )}
-
                     {/* 取消召唤/重投小按钮 - 仅在 CONTRACT_PENDING 状态显示 */}
                     {gameState === GameState.CONTRACT_PENDING && (
                         wentThroughRewardChoice ? (
@@ -708,12 +701,18 @@ export default function App() {
 
                     {/* 主按钮 - 在 REWARD_CHOICE 状态下隐藏 */}
                     {gameState !== GameState.REWARD_CHOICE && (
+                      <div className="relative z-10 flex-1 min-w-0 h-16 md:h-20">
+                        {gameState === GameState.CONTRACT_PENDING && result && (
+                          <div className={getButtonAuraFrameClass(result.rarity, 'bottomMain')}>
+                            <ThreeRarityAura rarity={result.rarity} intensity={isOverflowAuraRarity(result.rarity) ? 'burst' : 'large'} />
+                          </div>
+                        )}
                         <button
                             onMouseDown={gameState === GameState.IDLE ? startCharge : undefined}
                             onTouchStart={gameState === GameState.IDLE ? startCharge : undefined}
                             onClick={mainButtonAction || undefined}
                             disabled={isButtonDisabled}
-                            className={`relative z-10 isolate flex-1 min-w-0 h-16 md:h-20 rounded-xl transition-all flex items-center justify-center overflow-hidden shadow-2xl ${buttonStyleClass}`}
+                            className={`relative z-10 isolate w-full h-full rounded-xl transition-all flex items-center justify-center overflow-hidden shadow-2xl ${buttonStyleClass}`}
                         >
                             {gameState === GameState.CONTRACT_PENDING && result && (
                                 <>
@@ -742,6 +741,7 @@ export default function App() {
                                 {mainButtonText}
                             </span>
                         </button>
+                      </div>
                     )}
 
                     {/* 重置按钮 - 仅在 CONTRACT_PENDING 状态显示，连续失败5次才可点击 */}
