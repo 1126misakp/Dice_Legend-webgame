@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import * as THREE from 'three';
+import { getAuraCanvasSize } from './threeAuraCanvas';
 
 interface Props {
   rarity: string;
@@ -163,12 +164,14 @@ const ThreeRarityAura: React.FC<Props> = ({ rarity, intensity = 'normal', classN
       const width = mount.clientWidth || 1;
       const height = mount.clientHeight || 1;
       const aspect = width / height;
+      const pixelRatio = Math.min(window.devicePixelRatio, 1.8);
+      const canvasSize = getAuraCanvasSize(width, height, pixelRatio);
       camera.left = -aspect;
       camera.right = aspect;
       camera.top = 1;
       camera.bottom = -1;
       camera.updateProjectionMatrix();
-      renderer.setSize(width, height, false);
+      renderer.setSize(canvasSize.cssWidth, canvasSize.cssHeight, true);
       const xScale = isBurst ? Math.min(aspect * 1.24, 2.65) : (isLarge ? Math.min(aspect * 1.08, 2.2) : Math.min(aspect * 0.92, 1.8));
       group.scale.set(xScale, 1, 1);
     };
