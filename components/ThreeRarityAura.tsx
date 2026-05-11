@@ -1,11 +1,12 @@
 import React, { useEffect, useRef } from 'react';
 import * as THREE from 'three';
-import { getAuraCanvasSize } from './threeAuraCanvas';
+import { getAuraCameraBounds, getAuraCanvasSize } from './threeAuraCanvas';
 
 interface Props {
   rarity: string;
   intensity?: 'normal' | 'large' | 'burst';
   className?: string;
+  viewportScale?: number;
 }
 
 type AuraTheme = {
@@ -64,7 +65,7 @@ const getAuraTheme = (rarity: string): AuraTheme => {
   }
 };
 
-const ThreeRarityAura: React.FC<Props> = ({ rarity, intensity = 'normal', className = '' }) => {
+const ThreeRarityAura: React.FC<Props> = ({ rarity, intensity = 'normal', className = '', viewportScale = 1 }) => {
   const mountRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -166,10 +167,11 @@ const ThreeRarityAura: React.FC<Props> = ({ rarity, intensity = 'normal', classN
       const aspect = width / height;
       const pixelRatio = Math.min(window.devicePixelRatio, 1.8);
       const canvasSize = getAuraCanvasSize(width, height, pixelRatio);
-      camera.left = -aspect;
-      camera.right = aspect;
-      camera.top = 1;
-      camera.bottom = -1;
+      const cameraBounds = getAuraCameraBounds(width, height, viewportScale);
+      camera.left = cameraBounds.left;
+      camera.right = cameraBounds.right;
+      camera.top = cameraBounds.top;
+      camera.bottom = cameraBounds.bottom;
       camera.updateProjectionMatrix();
       renderer.setSize(canvasSize.cssWidth, canvasSize.cssHeight, true);
       const xScale = isBurst ? Math.min(aspect * 1.24, 2.65) : (isLarge ? Math.min(aspect * 1.08, 2.2) : Math.min(aspect * 0.92, 1.8));

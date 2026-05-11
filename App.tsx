@@ -628,7 +628,7 @@ export default function App() {
                                 <div className="flex-[3] relative overflow-visible">
                                     {/* 按钮外沿余辉 */}
                                     <div className={getButtonAuraFrameClass(rarity, 'rewardChoice')}>
-                                        <ThreeRarityAura rarity={rarity} intensity={overflowAura ? 'burst' : 'large'} />
+                                        <ThreeRarityAura rarity={rarity} intensity={overflowAura ? 'burst' : 'large'} viewportScale={overflowAura ? 1.45 : 1.4} />
                                     </div>
 
                                     <button
@@ -704,7 +704,7 @@ export default function App() {
                       <div className="relative z-10 flex-1 min-w-0 h-16 md:h-20">
                         {gameState === GameState.CONTRACT_PENDING && result && (
                           <div className={getButtonAuraFrameClass(result.rarity, 'bottomMain')}>
-                            <ThreeRarityAura rarity={result.rarity} intensity={isOverflowAuraRarity(result.rarity) ? 'burst' : 'large'} />
+                            <ThreeRarityAura rarity={result.rarity} intensity={isOverflowAuraRarity(result.rarity) ? 'burst' : 'large'} viewportScale={isOverflowAuraRarity(result.rarity) ? 1.6 : 1.5} />
                           </div>
                         )}
                         <button
