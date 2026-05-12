@@ -10,6 +10,12 @@ import { logger } from '../utils/logger';
 
 const MIMO_TTS_MODEL = 'mimo-v2.5-tts-voicedesign';
 
+type VoiceAudioWindow = Window & typeof globalThis & {
+  webkitAudioContext?: typeof AudioContext;
+};
+
+let voiceAudioContext: AudioContext | null = null;
+
 // 稀有度对应的语音数量
 export const VOICE_COUNT_BY_RARITY: Record<string, number> = {
   'R': 1,    // 只有奥义
@@ -71,25 +77,76 @@ export function audioDataToBlob(audioData: string): Blob {
   }
 }
 
+export async function initVoiceAudioPlayback(): Promise<AudioContext | null> {
+  if (typeof window === 'undefined') return null;
+  if (!voiceAudioContext) {
+    const AudioContextCtor = window.AudioContext || (window as VoiceAudioWindow).webkitAudioContext;
+    if (!AudioContextCtor) return null;
+    voiceAudioContext = new AudioContextCtor();
+  }
+
+  if (voiceAudioContext.state === 'suspended') {
+    await voiceAudioContext.resume();
+  }
+
+  return voiceAudioContext;
+}
+
+async function playAudioBlobWithWebAudio(blob: Blob): Promise<void> {
+  const audioContext = await initVoiceAudioPlayback();
+  if (!audioContext || audioContext.state !== 'running') {
+    throw new Error('语音 AudioContext 未就绪');
+  }
+
+  const arrayBuffer = await blob.arrayBuffer();
+  const audioBuffer = await audioContext.decodeAudioData(arrayBuffer.slice(0));
+  const source = audioContext.createBufferSource();
+  source.buffer = audioBuffer;
+  source.connect(audioContext.destination);
+
+  return new Promise(resolve => {
+    source.onended = () => resolve();
+    source.start();
+  });
+}
+
+function playAudioBlobWithElement(blob: Blob): Promise<void> {
+  const url = URL.createObjectURL(blob);
+  const audio = new Audio(url);
+
+  return new Promise((resolve, reject) => {
+    const cleanup = () => URL.revokeObjectURL(url);
+
+    audio.onended = () => {
+      cleanup();
+      resolve();
+    };
+    audio.onerror = (e) => {
+      cleanup();
+      reject(e);
+    };
+
+    const playPromise = audio.play();
+    if (playPromise) {
+      playPromise.catch(error => {
+        cleanup();
+        reject(error);
+      });
+    }
+  });
+}
+
 /**
  * 播放音频数据（自动检测 hex 或 base64 格式）
  */
 export async function playAudioData(audioData: string): Promise<void> {
   const blob = audioDataToBlob(audioData);
-  const url = URL.createObjectURL(blob);
-  const audio = new Audio(url);
-
-  return new Promise((resolve, reject) => {
-    audio.onended = () => {
-      URL.revokeObjectURL(url);
-      resolve();
-    };
-    audio.onerror = (e) => {
-      URL.revokeObjectURL(url);
-      reject(e);
-    };
-    audio.play();
-  });
+  try {
+    await playAudioBlobWithWebAudio(blob);
+  } catch (error) {
+    logger.debug('[VoiceService] Web Audio 未就绪，回退到 HTMLAudio', error);
+    await playAudioBlobWithElement(blob);
+  }
 }
 
 /**
@@ -101,10 +158,10 @@ export async function playHexAudio(hexString: string): Promise<void> {
 
 /**
  * 角色立绘生成完成后自动播放的语音。
- * 用户看到角色卡时用奥义强化反馈，避免默认播放出场语音。
+ * 用户看到角色卡时播放出场语音，作为第一次展示反馈。
  */
 export function getAutoPlayVoice(voices?: CharacterVoices): VoiceData | undefined {
-  return voices?.voices.find(voice => voice.skillType === 'ultimate');
+  return voices?.voices.find(voice => voice.skillType === 'entrance');
 }
 
 /**

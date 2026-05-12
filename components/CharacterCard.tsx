@@ -28,7 +28,7 @@ interface Props {
 const CharacterCard: React.FC<Props> = ({ info, onClose, apiKeys, capabilities }) => {
   const [showFullArt, setShowFullArt] = useState(false);
   const [isLongPressing, setIsLongPressing] = useState(false);
-  const [playedUltimateVoiceKey, setPlayedUltimateVoiceKey] = useState<string | null>(null);
+  const [playedEntranceVoiceKey, setPlayedEntranceVoiceKey] = useState<string | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
 
   const {
@@ -54,21 +54,21 @@ const CharacterCard: React.FC<Props> = ({ info, onClose, apiKeys, capabilities }
     if (!autoPlayVoice) return;
 
     const voiceKey = `${info.name}-${autoPlayVoice.voiceId}-${autoPlayVoice.audioDataHex.length}`;
-    if (playedUltimateVoiceKey === voiceKey) return;
+    if (playedEntranceVoiceKey === voiceKey) return;
 
-    logger.debug('[Voice] 自动播放奥义语音', autoPlayVoice.line);
-    setPlayedUltimateVoiceKey(voiceKey);
+    logger.debug('[Voice] 自动播放出场语音', autoPlayVoice.line);
+    setPlayedEntranceVoiceKey(voiceKey);
 
     const timer = window.setTimeout(async () => {
       try {
         await playAudioData(autoPlayVoice.audioDataHex);
       } catch (error) {
-        logger.error('[Voice] 奥义语音播放失败', error);
+        logger.error('[Voice] 出场语音播放失败', error);
       }
     }, 500);
 
     return () => window.clearTimeout(timer);
-  }, [info.name, info.voices, playedUltimateVoiceKey]);
+  }, [info.name, info.voices, playedEntranceVoiceKey]);
 
   const downloadAll = async (event: React.MouseEvent) => {
     event.stopPropagation();

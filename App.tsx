@@ -13,6 +13,7 @@ import { DiceResult, GameState, Inventory, CharacterInfo, RawDiceResult } from '
 import { calculateDiceResult, upgradeProfession } from './logic/gameLogic';
 import { Dices, RefreshCw, Eye, MessageSquareQuote, Handshake, RotateCcw, Gift, ShieldCheck, Anchor, KeyRound } from 'lucide-react';
 import { audioService, Rarity } from './services/audioService';
+import { initVoiceAudioPlayback } from './services/voiceService';
 import { playClickSound } from './hooks/useButtonSound';
 import { ApiKeys, clearApiKeys, getApiCapabilities, loadApiKeys, saveApiKeys } from './utils/apiKeyStore';
 import { useContractGeneration } from './hooks/useContractGeneration';
@@ -59,6 +60,7 @@ export default function App() {
     // 在用户首次交互时初始化AudioContext
     const initAudio = () => {
       audioService.init();
+      initVoiceAudioPlayback();
       window.removeEventListener('click', initAudio);
       window.removeEventListener('touchstart', initAudio);
     };
