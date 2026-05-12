@@ -175,16 +175,7 @@ export function getAutoPlayVoice(voices?: CharacterVoices): VoiceData | undefine
 }
 
 export function getAutoPlayVoiceDelayMs(rarity: string): number {
-  switch (rarity) {
-    case 'UR':
-      return 2400;
-    case 'SSR':
-      return 1600;
-    case 'SR':
-      return 1000;
-    default:
-      return 800;
-  }
+  return 600;
 }
 
 /**

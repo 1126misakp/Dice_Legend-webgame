@@ -54,7 +54,7 @@ export const ILLUSTRATOR_SYSTEM_PROMPT = `# Role: 幻想战棋手游首席立绘
 ## Core Rules
 1. 核心风格：只写西式幻想风格，不要写“日式战棋卡牌全身立绘”等额外风格。
 2. 输出语言：只输出中文自然语句 prompt，不要英文标签堆词，不要解释，不要 Markdown。
-3. 人物必须固定为女性角色，写清性别、年龄、职业、种族和稀有度。
+3. 人物必须固定为女性角色，人物主体只写清性别、年龄、职业和种族；人物主体部分不得出现稀有度、R、SR、SSR、UR 等相关字样。
 4. 必须加入“弱化微小细节不要过度刻画”，用于减少画面噪点和碎光。
 5. 全年龄原则：可以呈现健康的肩颈、手臂、腿部轮廓和成年体态，但不暴露隐私部位，不出现裸露、色情构图或成人向姿态。
 6. 未成年或低龄角色只能使用完整制服、护腿、长靴和非性感化服装，不强化胸部、露肤、吊带袜或战损服饰。
@@ -67,7 +67,7 @@ export const ILLUSTRATOR_SYSTEM_PROMPT = `# Role: 幻想战棋手游首席立绘
 
 ## Prompt Structure
 请按一个完整中文自然段组织，必须按顺序包含以下内容：
-1. 人物主体：女性、年龄、职业、种族、稀有度。
+1. 人物主体：女性、年龄、职业、种族；不得出现稀有度、R、SR、SSR、UR 等相关字样。
 2. 风格：整体为西式幻想风格。
 3. 必须加入的提示词：弱化微小细节不要过度刻画。
 4. 镜头：全身构图、黄金分割视觉焦点、稀有度对应镜头语言。
@@ -284,7 +284,7 @@ export function buildLocalImagePrompt(info: CharacterInfo): string {
   const action = getActionPose(info);
   const background = getBackground(info);
 
-  return `绘制一名${subject}，${info.rarity}稀有度，整体为西式幻想风格，弱化微小细节不要过度刻画。画面采用${camera}，脸部、躯干、四肢和职业装备清晰可见，不被武器、披风、特效或背景遮挡。人物种族特征为${raceFeature}，${legwearAndDamage}。职业辨识度必须强，武器或法器包含${professionGear}。${background}。视觉使用大块明暗层次和干净空气透视，服饰材质表现为皮革、织物、金属扣件和护具层次，武器材质与背景材质结合${attributeMaterial}，特效保持清晰大形状、柔和边缘光和稀疏粒子，${rarityDecoration}。动作/姿势为${action}。画面保持完整得体，无文字、无水印，不暴露隐私部位，不使用色情构图。`;
+  return `绘制一名${subject}，整体为西式幻想风格，弱化微小细节不要过度刻画。画面采用${camera}，脸部、躯干、四肢和职业装备清晰可见，不被武器、披风、特效或背景遮挡。人物种族特征为${raceFeature}，${legwearAndDamage}。职业辨识度必须强，武器或法器包含${professionGear}。${background}。视觉使用大块明暗层次和干净空气透视，服饰材质表现为皮革、织物、金属扣件和护具层次，武器材质与背景材质结合${attributeMaterial}，特效保持清晰大形状、柔和边缘光和稀疏粒子，${rarityDecoration}。动作/姿势为${action}。画面保持完整得体，无文字、无水印，不暴露隐私部位，不使用色情构图。`;
 }
 
 export function buildLivePromptUserText(info: CharacterInfo): string {

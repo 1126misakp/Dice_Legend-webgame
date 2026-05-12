@@ -48,11 +48,11 @@ test('没有出场语音时不会退回播放奥义语音', () => {
   assert.equal(getAutoPlayVoice({ ...voices, voices: voices.voices.filter(voice => voice.skillType !== 'entrance') }), undefined);
 });
 
-test('自动出场语音延迟等待稀有度召唤音效结束', () => {
-  assert.equal(getAutoPlayVoiceDelayMs('R'), 800);
-  assert.equal(getAutoPlayVoiceDelayMs('SR'), 1000);
-  assert.equal(getAutoPlayVoiceDelayMs('SSR'), 1600);
-  assert.equal(getAutoPlayVoiceDelayMs('UR'), 2400);
+test('自动出场语音延迟统一为 600ms', () => {
+  assert.equal(getAutoPlayVoiceDelayMs('R'), 600);
+  assert.equal(getAutoPlayVoiceDelayMs('SR'), 600);
+  assert.equal(getAutoPlayVoiceDelayMs('SSR'), 600);
+  assert.equal(getAutoPlayVoiceDelayMs('UR'), 600);
 });
 
 test('浏览器拦截音频自动播放时向调用方返回失败', async () => {
