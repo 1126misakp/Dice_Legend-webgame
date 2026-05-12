@@ -60,7 +60,7 @@ export const ILLUSTRATOR_SYSTEM_PROMPT = `# Role: 幻想战棋手游首席立绘
 6. 未成年或低龄角色只能使用完整制服、护腿、长靴和非性感化服装，不强化胸部、露肤、吊带袜或战损服饰。
 7. 成年角色服饰暴露程度随稀有度提升而增加，但必须保持完整得体；20-40岁角色可强化成年体态和护胸轮廓，避免使用直白杯码。
 8. 袜装颜色跟随视觉主色调：深色主色调用黑丝，浅色主色调用白丝，其余使用主色调同色吊带袜或连裤袜。
-9. 动作/姿势需要多样，不能总是站立；布衣职业、法师、神官、召唤师、贤者等非硬金属武器职业优先使用坐姿、跪坐、半蹲、倚靠、仪式施法、阅读魔法书等非战斗姿态。
+9. 动作/姿势需要多样，不能总是站立；布衣职业、法师、神官、召唤师、贤者等非硬金属武器职业优先使用坐姿、跪坐、跪姿、漂浮、仪式施法、阅读魔法书等非战斗姿态。
 10. 全身减少遮挡：脸部、躯干、四肢、职业装备和武器必须清晰可见，不被披风、特效、武器、文字或背景遮住。
 11. 画面中不能出现文字、字母、符号、水印。
 12. 禁止使用 quality 标签，例如 8K、masterpiece、best quality、highres、illustration、unity 8k wallpaper、extremely detailed。
@@ -75,7 +75,7 @@ export const ILLUSTRATOR_SYSTEM_PROMPT = `# Role: 幻想战棋手游首席立绘
 6. 武器：职业武器、坐骑、召唤物或法器。
 7. 背景：稀有度对应场景复杂度。
 8. 视觉与特效：服饰材质、武器材质、背景材质、属性材质和干净特效。
-9. 动作/姿势：战斗、施法、防御、坐姿、蹲姿、倚靠、仪式动作或待机演出。
+9. 动作/姿势：战斗、施法、防御、坐姿、跪坐、跪姿、漂浮、仪式动作或待机演出。
 
 ## Rarity Scaling
 - R：标准平视全身构图，朴素实用装备，简单站姿或待机姿势，极简背景。
@@ -137,7 +137,7 @@ function getActionPose(info: CharacterInfo): string {
     const highRarity = info.rarity === 'SSR' || info.rarity === 'UR';
     if (info.profession.includes('召') || info.profession.includes('通灵')) {
       return highRarity
-        ? '以半蹲姿势展开召唤仪式，一手按向地面魔法阵，召唤兽剪影在身后浮现'
+        ? '以漂浮姿态展开召唤仪式，一手指向地面魔法阵，召唤兽剪影在身后浮现'
         : '以侧坐姿势翻开契约卷轴，召唤法器悬浮在身侧';
     }
     if (info.profession.includes('牧') || info.profession.includes('神官') || info.profession.includes('修道') || info.profession.includes('圣职')) {
@@ -151,7 +151,7 @@ function getActionPose(info: CharacterInfo): string {
         : '以侧坐姿态翻阅魔法书，抬手引导元素光';
     }
     return highRarity
-      ? '以半蹲施法姿势展开咒术刻印，手臂和披风形成清晰剪影'
+      ? '以跪姿施法姿态展开咒术刻印，手臂和披风形成清晰剪影'
       : '以倚靠姿势抬手施法，动作克制但轮廓清楚';
   }
 

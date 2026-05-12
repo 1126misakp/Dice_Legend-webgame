@@ -126,7 +126,8 @@ test('布衣职业优先生成非站立非战斗姿势', () => {
     rarity: 'SSR'
   });
 
-  assert.match(prompt, /坐姿|跪坐|侧坐|半蹲|倚靠/);
+  assert.match(prompt, /坐姿|跪坐|侧坐|跪姿|漂浮|倚靠/);
+  assert.doesNotMatch(prompt, /半蹲/);
   assert.doesNotMatch(prompt, /前线战斗姿态迎敌/);
 });
 
