@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { CharacterInfo } from '../types';
-import { getAutoPlayVoice, playAudioData } from '../services/voiceService';
+import { getAutoPlayVoice, getAutoPlayVoiceDelayMs, playAudioData } from '../services/voiceService';
 import { ApiCapabilities, ApiKeys } from '../utils/apiKeyStore';
 import { logger } from '../utils/logger';
 import { downloadMediaFile } from '../utils/mediaDownload';
@@ -29,6 +29,7 @@ const CharacterCard: React.FC<Props> = ({ info, onClose, apiKeys, capabilities }
   const [showFullArt, setShowFullArt] = useState(false);
   const [isLongPressing, setIsLongPressing] = useState(false);
   const [playedEntranceVoiceKey, setPlayedEntranceVoiceKey] = useState<string | null>(null);
+  const scheduledEntranceVoiceKeyRef = useRef<string | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
 
   const {
@@ -55,20 +56,30 @@ const CharacterCard: React.FC<Props> = ({ info, onClose, apiKeys, capabilities }
 
     const voiceKey = `${info.name}-${autoPlayVoice.voiceId}-${autoPlayVoice.audioDataHex.length}`;
     if (playedEntranceVoiceKey === voiceKey) return;
+    if (scheduledEntranceVoiceKeyRef.current === voiceKey) return;
 
-    logger.debug('[Voice] 自动播放出场语音', autoPlayVoice.line);
-    setPlayedEntranceVoiceKey(voiceKey);
+    scheduledEntranceVoiceKeyRef.current = voiceKey;
+    const delayMs = getAutoPlayVoiceDelayMs(info.rarity);
+    logger.debug('[Voice] 准备自动播放出场语音', { line: autoPlayVoice.line, delayMs });
 
     const timer = window.setTimeout(async () => {
       try {
         await playAudioData(autoPlayVoice.audioDataHex);
+        setPlayedEntranceVoiceKey(voiceKey);
+        logger.debug('[Voice] 出场语音播放完成', autoPlayVoice.line);
       } catch (error) {
         logger.error('[Voice] 出场语音播放失败', error);
+        scheduledEntranceVoiceKeyRef.current = null;
       }
-    }, 500);
+    }, delayMs);
 
-    return () => window.clearTimeout(timer);
-  }, [info.name, info.voices, playedEntranceVoiceKey]);
+    return () => {
+      window.clearTimeout(timer);
+      if (scheduledEntranceVoiceKeyRef.current === voiceKey && playedEntranceVoiceKey !== voiceKey) {
+        scheduledEntranceVoiceKeyRef.current = null;
+      }
+    };
+  }, [info.name, info.rarity, info.voices, playedEntranceVoiceKey]);
 
   const downloadAll = async (event: React.MouseEvent) => {
     event.stopPropagation();

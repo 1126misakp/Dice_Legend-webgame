@@ -174,6 +174,19 @@ export function getAutoPlayVoice(voices?: CharacterVoices): VoiceData | undefine
   return voices?.voices.find(voice => voice.skillType === 'entrance');
 }
 
+export function getAutoPlayVoiceDelayMs(rarity: string): number {
+  switch (rarity) {
+    case 'UR':
+      return 2400;
+    case 'SSR':
+      return 1600;
+    case 'SR':
+      return 1000;
+    default:
+      return 800;
+  }
+}
+
 /**
  * 根据稀有度获取需要生成的技能类型列表
  * 所有稀有度都包含出场语音

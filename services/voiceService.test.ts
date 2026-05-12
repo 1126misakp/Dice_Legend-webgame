@@ -2,7 +2,13 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { CharacterVoices } from '../types';
 import { ApiKeys } from '../utils/apiKeyStore';
-import { generateCharacterVoices, getAutoPlayVoice, initVoiceAudioPlayback, playAudioData } from './voiceService';
+import {
+  generateCharacterVoices,
+  getAutoPlayVoice,
+  getAutoPlayVoiceDelayMs,
+  initVoiceAudioPlayback,
+  playAudioData
+} from './voiceService';
 
 const voices: CharacterVoices = {
   characterName: '塞拉',
@@ -40,6 +46,13 @@ test('角色立绘生成后自动播放的语音选择出场语音', () => {
 
 test('没有出场语音时不会退回播放奥义语音', () => {
   assert.equal(getAutoPlayVoice({ ...voices, voices: voices.voices.filter(voice => voice.skillType !== 'entrance') }), undefined);
+});
+
+test('自动出场语音延迟等待稀有度召唤音效结束', () => {
+  assert.equal(getAutoPlayVoiceDelayMs('R'), 800);
+  assert.equal(getAutoPlayVoiceDelayMs('SR'), 1000);
+  assert.equal(getAutoPlayVoiceDelayMs('SSR'), 1600);
+  assert.equal(getAutoPlayVoiceDelayMs('UR'), 2400);
 });
 
 test('浏览器拦截音频自动播放时向调用方返回失败', async () => {
