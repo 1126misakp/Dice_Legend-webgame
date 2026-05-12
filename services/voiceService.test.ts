@@ -36,6 +36,7 @@ const apiKeys: ApiKeys = {
   runningHub: '',
   mimo: 'mimo-key',
   mimoVoice: '',
+  mimoKeyMode: 'tokenPlan',
   textProvider: 'mimo'
 };
 

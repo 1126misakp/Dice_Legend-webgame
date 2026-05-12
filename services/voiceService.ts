@@ -5,7 +5,7 @@
 
 import { CharacterInfo, SkillType, VoiceData, CharacterVoices } from '../types';
 import { ApiKeys } from '../utils/apiKeyStore';
-import { getMimoVoiceApiKey, proxyMimoOfficialTTS, proxyMimoTTS, proxyTextChat } from '../utils/apiClient';
+import { getMimoTextApiKey, getMimoVoiceApiKey, proxyMimoOfficialTTS, proxyMimoTTS, proxyTextChat } from '../utils/apiClient';
 import { logger } from '../utils/logger';
 
 const MIMO_TTS_MODEL = 'mimo-v2.5-tts-voicedesign';
@@ -428,7 +428,7 @@ export async function generateVoicePromptAndLines(
     logger.warn('[VoiceService] 未配置 OpenRouter API Key，使用本地语音台词兜底');
     return buildFallbackVoiceConfig(characterInfo);
   }
-  if (apiKeys.textProvider === 'mimo' && !apiKeys.mimo.trim()) {
+  if (apiKeys.textProvider === 'mimo' && !getMimoTextApiKey(apiKeys).trim()) {
     logger.warn('[VoiceService] 未配置 MiMo API Key，使用本地语音台词兜底');
     return buildFallbackVoiceConfig(characterInfo);
   }
@@ -570,7 +570,7 @@ export async function generateCharacterVoices(
         mimoVoiceApiKey,
         voicePrompt,
         line,
-        apiKeys.textProvider === 'openRouter'
+        apiKeys.textProvider === 'openRouter' || apiKeys.mimoKeyMode === 'voiceApi'
       );
 
       const voiceData: VoiceData = {

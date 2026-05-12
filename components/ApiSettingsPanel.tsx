@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { KeyRound, Save, Trash2, X, CheckCircle2, AlertTriangle } from 'lucide-react';
-import { ApiCapabilities, ApiKeys, DEFAULT_OPENROUTER_MODEL, DEFAULT_TEXT_PROVIDER, TextProvider } from '../utils/apiKeyStore';
+import { ApiCapabilities, ApiKeys, DEFAULT_MIMO_KEY_MODE, DEFAULT_OPENROUTER_MODEL, DEFAULT_TEXT_PROVIDER, MimoKeyMode, TextProvider } from '../utils/apiKeyStore';
 
 interface Props {
   apiKeys: ApiKeys;
@@ -15,11 +15,12 @@ const keyFields: Array<{
   id: 'openRouter' | 'runningHub' | 'mimo' | 'mimoVoice';
   label: string;
   hint: string;
+  mimoKeyMode?: MimoKeyMode;
 }> = [
   { id: 'openRouter', label: 'OpenRouter API Key', hint: '角色文案、立绘提示词、动态提示词' },
   { id: 'runningHub', label: 'RunningHub API Key', hint: '角色立绘与动态化视频' },
-  { id: 'mimo', label: 'MiMo Token Plan API Key', hint: 'MiMo 模式文案与语音生成' },
-  { id: 'mimoVoice', label: 'MiMo 语音 API Key', hint: 'OpenRouter 模式语音生成' }
+  { id: 'mimo', label: 'MiMo Token Plan API Key', hint: 'MiMo 模式文案与语音生成', mimoKeyMode: 'tokenPlan' },
+  { id: 'mimoVoice', label: 'MiMo 语音 API Key', hint: 'MiMo 官方文案与语音生成', mimoKeyMode: 'voiceApi' }
 ];
 
 const textProviderOptions: Array<{ value: TextProvider; label: string; hint: string }> = [
@@ -31,17 +32,19 @@ export function isOpenRouterSettingDisabled(textProvider: TextProvider): boolean
   return textProvider === 'mimo';
 }
 
-export function isKeyFieldDisabled(fieldId: 'openRouter' | 'runningHub' | 'mimo' | 'mimoVoice', textProvider: TextProvider): boolean {
+export function isKeyFieldDisabled(fieldId: 'openRouter' | 'runningHub' | 'mimo' | 'mimoVoice', textProvider: TextProvider, mimoKeyMode: MimoKeyMode = DEFAULT_MIMO_KEY_MODE): boolean {
   if (fieldId === 'openRouter') return textProvider === 'mimo';
+  if (fieldId === 'mimo' && textProvider === 'mimo') return mimoKeyMode === 'voiceApi';
   if (fieldId === 'mimo') return textProvider === 'openRouter';
-  if (fieldId === 'mimoVoice') return textProvider === 'mimo';
+  if (fieldId === 'mimoVoice' && textProvider === 'mimo') return mimoKeyMode === 'tokenPlan';
   return false;
 }
 
-function getDisabledHint(fieldId: 'openRouter' | 'runningHub' | 'mimo' | 'mimoVoice', textProvider: TextProvider): string | null {
+function getDisabledHint(fieldId: 'openRouter' | 'runningHub' | 'mimo' | 'mimoVoice', textProvider: TextProvider, mimoKeyMode: MimoKeyMode): string | null {
   if (fieldId === 'openRouter' && textProvider === 'mimo') return '当前文案供应商为 MiMo，暂不生效';
   if (fieldId === 'mimo' && textProvider === 'openRouter') return '当前文案供应商为 OpenRouter，暂不生效';
-  if (fieldId === 'mimoVoice' && textProvider === 'mimo') return '仅 OpenRouter 文案模式下用于语音';
+  if (fieldId === 'mimo' && textProvider === 'mimo' && mimoKeyMode === 'voiceApi') return '当前选择 MiMo 语音 API Key，暂不生效';
+  if (fieldId === 'mimoVoice' && textProvider === 'mimo' && mimoKeyMode === 'tokenPlan') return '当前选择 Token Plan API Key，暂不生效';
   return null;
 }
 
@@ -111,29 +114,44 @@ const ApiSettingsPanel: React.FC<Props> = ({ apiKeys, capabilities, open, onClos
             </select>
           </label>
 
-          {keyFields.map(field => (
-            <label key={field.id} className={`block ${isKeyFieldDisabled(field.id, draft.textProvider) ? 'opacity-75' : ''}`}>
+          {keyFields.map(field => {
+            const fieldDisabled = isKeyFieldDisabled(field.id, draft.textProvider, draft.mimoKeyMode);
+            const showMimoModeCheckbox = draft.textProvider === 'mimo' && field.mimoKeyMode;
+            return (
+            <label key={field.id} className={`block ${fieldDisabled ? 'opacity-75' : ''}`}>
               <div className="flex items-center justify-between mb-1">
-                <span className={`text-sm font-bold ${isKeyFieldDisabled(field.id, draft.textProvider) ? openRouterDisabledLabelClass : 'text-[#3b2410]'}`}>{field.label}</span>
-                <span className={`hidden sm:inline text-[11px] ${isKeyFieldDisabled(field.id, draft.textProvider) ? openRouterDisabledHintClass : 'text-[#7c5a2b]'}`}>
-                  {getDisabledHint(field.id, draft.textProvider) || field.hint}
+                <span className="flex items-center gap-2 min-w-0">
+                  <span className={`text-sm font-bold ${fieldDisabled ? openRouterDisabledLabelClass : 'text-[#3b2410]'}`}>{field.label}</span>
+                  {showMimoModeCheckbox && (
+                    <input
+                      type="checkbox"
+                      checked={draft.mimoKeyMode === field.mimoKeyMode}
+                      onChange={() => setDraft(prev => ({ ...prev, mimoKeyMode: field.mimoKeyMode || DEFAULT_MIMO_KEY_MODE }))}
+                      className="h-4 w-4 shrink-0 accent-blue-800"
+                      aria-label={`使用${field.label}`}
+                    />
+                  )}
+                </span>
+                <span className={`hidden sm:inline text-[11px] ${fieldDisabled ? openRouterDisabledHintClass : 'text-[#7c5a2b]'}`}>
+                  {getDisabledHint(field.id, draft.textProvider, draft.mimoKeyMode) || field.hint}
                 </span>
               </div>
-              <div className={`sm:hidden text-[11px] mb-1 ${isKeyFieldDisabled(field.id, draft.textProvider) ? openRouterDisabledHintClass : 'text-[#7c5a2b]'}`}>
-                {getDisabledHint(field.id, draft.textProvider) || field.hint}
+              <div className={`sm:hidden text-[11px] mb-1 ${fieldDisabled ? openRouterDisabledHintClass : 'text-[#7c5a2b]'}`}>
+                {getDisabledHint(field.id, draft.textProvider, draft.mimoKeyMode) || field.hint}
               </div>
               <input
                 type="password"
                 value={draft[field.id]}
                 onChange={e => setDraft(prev => ({ ...prev, [field.id]: e.target.value }))}
                 placeholder="粘贴你的 API Key"
-                disabled={isKeyFieldDisabled(field.id, draft.textProvider)}
+                disabled={fieldDisabled}
                 autoComplete="off"
                 spellCheck={false}
-                className={isKeyFieldDisabled(field.id, draft.textProvider) ? disabledInputClass : enabledInputClass}
+                className={fieldDisabled ? disabledInputClass : enabledInputClass}
               />
             </label>
-          ))}
+            );
+          })}
 
           <label className={`block ${openRouterDisabled ? 'opacity-75' : ''}`}>
             <div className="flex items-center justify-between mb-1">
@@ -163,7 +181,7 @@ const ApiSettingsPanel: React.FC<Props> = ({ apiKeys, capabilities, open, onClos
           <button
             onClick={() => {
               onClear();
-              setDraft({ openRouter: '', openRouterModel: DEFAULT_OPENROUTER_MODEL, runningHub: '', mimo: '', mimoVoice: '', textProvider: DEFAULT_TEXT_PROVIDER });
+              setDraft({ openRouter: '', openRouterModel: DEFAULT_OPENROUTER_MODEL, runningHub: '', mimo: '', mimoVoice: '', mimoKeyMode: DEFAULT_MIMO_KEY_MODE, textProvider: DEFAULT_TEXT_PROVIDER });
             }}
             className="px-4 py-2.5 rounded-xl bg-[#1b2d4f]/12 text-[#34405c] font-bold hover:bg-[#1b2d4f]/20 flex items-center justify-center gap-2 border border-[#1b2d4f]/15"
           >

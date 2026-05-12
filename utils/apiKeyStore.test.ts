@@ -62,6 +62,7 @@ test('loadApiKeys 将旧 miniMax 本地配置迁移为 mimo 字段', () => {
     runningHub: 'runninghub-key',
     mimo: 'old-minimax-key',
     mimoVoice: '',
+    mimoKeyMode: 'tokenPlan',
     textProvider: DEFAULT_TEXT_PROVIDER
   });
   assert.equal(keys.textProvider, 'mimo');
@@ -76,6 +77,7 @@ test('saveApiKeys 只保存新的 mimo 字段并清理旧字段', () => {
     runningHub: 'runninghub-key',
     mimo: 'mimo-key',
     mimoVoice: 'official-voice-key',
+    mimoKeyMode: 'voiceApi',
     textProvider: 'openRouter'
   });
 
@@ -85,6 +87,7 @@ test('saveApiKeys 只保存新的 mimo 字段并清理旧字段', () => {
     runningHub: 'runninghub-key',
     mimo: 'mimo-key',
     mimoVoice: 'official-voice-key',
+    mimoKeyMode: 'voiceApi',
     textProvider: 'openRouter'
   });
   assert.deepEqual(JSON.parse(storage['diceLegend.apiKeys.v1']), saved);
@@ -99,6 +102,7 @@ test('clearApiKeys 清除本地配置并返回空 MiMo 配置', () => {
   assert.equal(storage['diceLegend.apiKeys.v1'], undefined);
   assert.equal(keys.mimo, '');
   assert.equal(keys.mimoVoice, '');
+  assert.equal(keys.mimoKeyMode, 'tokenPlan');
   assert.equal(getApiCapabilities(keys).mimo, false);
   assert.equal(getApiCapabilities(keys).text, false);
 });
@@ -110,6 +114,7 @@ test('getApiCapabilities 根据文案供应商切换文案能力', () => {
     runningHub: '',
     mimo: '',
     mimoVoice: '',
+    mimoKeyMode: 'tokenPlan',
     textProvider: 'openRouter'
   }).text, true);
 
@@ -119,6 +124,29 @@ test('getApiCapabilities 根据文案供应商切换文案能力', () => {
     runningHub: '',
     mimo: '',
     mimoVoice: '',
+    mimoKeyMode: 'tokenPlan',
+    textProvider: 'mimo'
+  }).text, false);
+});
+
+test('getApiCapabilities 在 MiMo 模式下按 Key 模式切换文案能力', () => {
+  assert.equal(getApiCapabilities({
+    openRouter: '',
+    openRouterModel: DEFAULT_OPENROUTER_MODEL,
+    runningHub: '',
+    mimo: '',
+    mimoVoice: 'official-voice-key',
+    mimoKeyMode: 'voiceApi',
+    textProvider: 'mimo'
+  }).text, true);
+
+  assert.equal(getApiCapabilities({
+    openRouter: '',
+    openRouterModel: DEFAULT_OPENROUTER_MODEL,
+    runningHub: '',
+    mimo: 'token-plan-key',
+    mimoVoice: '',
+    mimoKeyMode: 'voiceApi',
     textProvider: 'mimo'
   }).text, false);
 });
@@ -130,6 +158,7 @@ test('getApiCapabilities 根据文案供应商切换语音 Key 来源', () => {
     runningHub: '',
     mimo: '',
     mimoVoice: 'official-voice-key',
+    mimoKeyMode: 'tokenPlan',
     textProvider: 'openRouter'
   }).mimo, true);
 
@@ -139,6 +168,7 @@ test('getApiCapabilities 根据文案供应商切换语音 Key 来源', () => {
     runningHub: '',
     mimo: 'token-plan-key',
     mimoVoice: '',
+    mimoKeyMode: 'tokenPlan',
     textProvider: 'openRouter'
   }).mimo, false);
 });

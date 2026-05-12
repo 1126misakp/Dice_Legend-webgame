@@ -17,6 +17,7 @@ const baseKeys: ApiKeys = {
   runningHub: '',
   mimo: 'tp-mimo-key',
   mimoVoice: 'official-voice-key',
+  mimoKeyMode: 'tokenPlan',
   textProvider: 'mimo'
 };
 
@@ -62,6 +63,30 @@ test('proxyTextChat 调用 MiMo 文案时给慢响应保留 120 秒超时', asyn
   });
 
   assert.deepEqual(timeoutValues, [120000]);
+});
+
+test('proxyTextChat 选择 MiMo 语音 Key 模式时使用官方文案代理', async () => {
+  const requests: Array<{ input: string | URL | Request; init?: RequestInit }> = [];
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    requests.push({ input, init });
+    return Response.json({ ok: true, data: { choices: [{ message: { content: 'ok' } }] } });
+  }) as typeof fetch;
+
+  await proxyTextChat({ ...baseKeys, mimoKeyMode: 'voiceApi' }, {
+    messages: [{ role: 'user', content: '生成一个角色' }],
+    max_tokens: 1200,
+    temperature: 0.8
+  });
+
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].input, '/api/mimo/chat-official');
+  assert.equal((requests[0].init?.headers as Record<string, string>)['X-User-Api-Key'], 'official-voice-key');
+  assert.deepEqual(JSON.parse(requests[0].init?.body as string), {
+    messages: [{ role: 'user', content: '生成一个角色' }],
+    temperature: 0.8,
+    model: 'mimo-v2.5-pro',
+    max_completion_tokens: 1200
+  });
 });
 
 test('proxyMimoTTS 给语音合成保留 120 秒超时', async () => {
@@ -120,5 +145,6 @@ test('proxyMimoOfficialTTS 使用官方语音代理并保留 120 秒超时', asy
 
 test('getMimoVoiceApiKey 根据文案供应商选择不同语音 Key', () => {
   assert.equal(getMimoVoiceApiKey(baseKeys), 'tp-mimo-key');
+  assert.equal(getMimoVoiceApiKey({ ...baseKeys, mimoKeyMode: 'voiceApi' }), 'official-voice-key');
   assert.equal(getMimoVoiceApiKey({ ...baseKeys, textProvider: 'openRouter' }), 'official-voice-key');
 });

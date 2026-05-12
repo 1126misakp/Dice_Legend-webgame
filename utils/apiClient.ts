@@ -6,7 +6,8 @@ type ApiEndpoint =
   | '/api/runninghub/outputs'
   | '/api/mimo/tts'
   | '/api/mimo/tts-official'
-  | '/api/mimo/chat';
+  | '/api/mimo/chat'
+  | '/api/mimo/chat-official';
 
 interface ProxySuccess<T> {
   ok: true;
@@ -151,8 +152,16 @@ export function proxyMimoChat(apiKey: string, body: unknown, options?: ApiClient
   return callProxy('/api/mimo/chat', apiKey, body, options);
 }
 
+export function proxyMimoOfficialChat(apiKey: string, body: unknown, options?: ApiClientOptions): Promise<ChatCompletionResponse> {
+  return callProxy('/api/mimo/chat-official', apiKey, body, options);
+}
+
+export function getMimoTextApiKey(keys: ApiKeys): string {
+  return keys.mimoKeyMode === 'voiceApi' ? keys.mimoVoice : keys.mimo;
+}
+
 export function getMimoVoiceApiKey(keys: ApiKeys): string {
-  return keys.textProvider === 'openRouter' ? keys.mimoVoice : keys.mimo;
+  return keys.textProvider === 'openRouter' || keys.mimoKeyMode === 'voiceApi' ? keys.mimoVoice : keys.mimo;
 }
 
 export function proxyTextChat(keys: ApiKeys, body: Record<string, unknown>, options?: ApiClientOptions): Promise<ChatCompletionResponse> {
@@ -164,16 +173,18 @@ export function proxyTextChat(keys: ApiKeys, body: Record<string, unknown>, opti
   }
 
   const { max_tokens: maxTokens, ...rest } = body;
-  return proxyMimoChat(keys.mimo, {
+  const requestBody = {
     ...rest,
     model: MIMO_TEXT_MODEL,
     max_completion_tokens: typeof maxTokens === 'number' ? maxTokens : 10000
-  }, { timeoutMs: MIMO_TEXT_TIMEOUT_MS, ...options });
+  };
+  const proxy = keys.mimoKeyMode === 'voiceApi' ? proxyMimoOfficialChat : proxyMimoChat;
+  return proxy(getMimoTextApiKey(keys), requestBody, { timeoutMs: MIMO_TEXT_TIMEOUT_MS, ...options });
 }
 
 export function getMissingApiKeyMessage(keys: ApiKeys): string | null {
   if (keys.textProvider === 'openRouter' && !keys.openRouter) return '未配置 OpenRouter API Key，角色文案将使用本地兜底。';
-  if (keys.textProvider === 'mimo' && !keys.mimo) return '未配置 MiMo API Key，角色文案将使用本地兜底。';
+  if (keys.textProvider === 'mimo' && !getMimoTextApiKey(keys)) return '未配置 MiMo API Key，角色文案将使用本地兜底。';
   if (!keys.runningHub) return '未配置 RunningHub API Key，立绘和动态化会缺失。';
   if (!getMimoVoiceApiKey(keys)) return '未配置 MiMo 语音 API Key，语音会缺失。';
   return null;

@@ -296,6 +296,24 @@ test('MiMo 文案代理使用 Token Plan 专属域名和小写模型 ID', async 
   assert.deepEqual(JSON.parse(records[0].init?.body as string), validMimoChatBody);
 });
 
+test('MiMo 官方文案代理使用官方域名和小写模型 ID', async () => {
+  const records = mockUpstream(Response.json({
+    choices: [{ message: { content: '{"name":"测试角色"}' } }]
+  }, { status: 200 }));
+
+  const { response, body } = await callWorker('/api/mimo/chat-official', postJson({
+    ...validMimoChatBody,
+    max_tokens: 9999,
+    injected: 'should-not-forward'
+  }, 'official-mimo-key'));
+
+  assert.equal(response.status, 200);
+  assert.equal(body.ok, true);
+  assert.equal(records[0].input, 'https://api.xiaomimimo.com/v1/chat/completions');
+  assert.equal((records[0].init?.headers as Record<string, string>)['api-key'], 'official-mimo-key');
+  assert.deepEqual(JSON.parse(records[0].init?.body as string), validMimoChatBody);
+});
+
 test('OpenRouter payload 类型错误返回 INVALID_PAYLOAD 且不触发上游', async () => {
   const records = mockUnexpectedUpstream();
   const { response, body } = await callWorker('/api/openrouter/chat', postJson({

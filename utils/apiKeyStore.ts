@@ -4,6 +4,7 @@ export interface ApiKeys {
   runningHub: string;
   mimo: string;
   mimoVoice: string;
+  mimoKeyMode: MimoKeyMode;
   textProvider: TextProvider;
 }
 
@@ -15,10 +16,12 @@ export interface ApiCapabilities {
 }
 
 export type TextProvider = 'mimo' | 'openRouter';
+export type MimoKeyMode = 'tokenPlan' | 'voiceApi';
 
 const STORAGE_KEY = 'diceLegend.apiKeys.v1';
 export const DEFAULT_OPENROUTER_MODEL = 'x-ai/grok-4.1-fast';
 export const DEFAULT_TEXT_PROVIDER: TextProvider = 'mimo';
+export const DEFAULT_MIMO_KEY_MODE: MimoKeyMode = 'tokenPlan';
 
 export const emptyApiKeys: ApiKeys = {
   openRouter: '',
@@ -26,6 +29,7 @@ export const emptyApiKeys: ApiKeys = {
   runningHub: '',
   mimo: '',
   mimoVoice: '',
+  mimoKeyMode: DEFAULT_MIMO_KEY_MODE,
   textProvider: DEFAULT_TEXT_PROVIDER
 };
 
@@ -35,6 +39,7 @@ type StoredApiKeys = Partial<ApiKeys> & {
 
 function normalizeKeys(value: StoredApiKeys | null | undefined): ApiKeys {
   const textProvider = value?.textProvider === 'openRouter' ? 'openRouter' : DEFAULT_TEXT_PROVIDER;
+  const mimoKeyMode = value?.mimoKeyMode === 'voiceApi' ? 'voiceApi' : DEFAULT_MIMO_KEY_MODE;
 
   return {
     openRouter: value?.openRouter?.trim() ?? '',
@@ -42,6 +47,7 @@ function normalizeKeys(value: StoredApiKeys | null | undefined): ApiKeys {
     runningHub: value?.runningHub?.trim() ?? '',
     mimo: value?.mimo?.trim() || value?.miniMax?.trim() || '',
     mimoVoice: value?.mimoVoice?.trim() ?? '',
+    mimoKeyMode,
     textProvider
   };
 }
@@ -77,12 +83,15 @@ export function getApiCapabilities(keys: ApiKeys): ApiCapabilities {
   const openRouter = keys.openRouter.trim().length > 0;
   const tokenPlanMimo = keys.mimo.trim().length > 0;
   const officialMimoVoice = keys.mimoVoice.trim().length > 0;
-  const mimo = keys.textProvider === 'openRouter' ? officialMimoVoice : tokenPlanMimo;
+  const mimo = keys.textProvider === 'openRouter' || keys.mimoKeyMode === 'voiceApi'
+    ? officialMimoVoice
+    : tokenPlanMimo;
+  const mimoText = keys.mimoKeyMode === 'voiceApi' ? officialMimoVoice : tokenPlanMimo;
 
   return {
     openRouter,
     runningHub: keys.runningHub.trim().length > 0,
     mimo,
-    text: keys.textProvider === 'openRouter' ? openRouter : tokenPlanMimo
+    text: keys.textProvider === 'openRouter' ? openRouter : mimoText
   };
 }

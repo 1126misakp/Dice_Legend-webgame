@@ -99,6 +99,18 @@ const targets: Record<string, ProxyTarget> = {
       },
       body: JSON.stringify(pick(payload, ['model', 'messages', 'max_completion_tokens', 'temperature', 'top_p', 'stream']))
     })
+  },
+  '/api/mimo/chat-official': {
+    url: MIMO_OFFICIAL_CHAT_URL,
+    validatePayload: validateMimoChatPayload,
+    buildRequest: (payload, apiKey) => ({
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'api-key': apiKey
+      },
+      body: JSON.stringify(pick(payload, ['model', 'messages', 'max_completion_tokens', 'temperature', 'top_p', 'stream']))
+    })
   }
 };
 
