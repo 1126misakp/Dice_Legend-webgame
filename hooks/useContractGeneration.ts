@@ -14,6 +14,7 @@ import {
 import { buildEmergencyImagePrompt } from '../utils/promptTemplates';
 import { delay, isCancelledError } from '../utils/asyncControl';
 import { logger } from '../utils/logger';
+import { createVoiceGenerationGate } from '../utils/voiceGenerationGate';
 
 interface UseContractGenerationOptions {
   apiKeys: ApiKeys;
@@ -109,13 +110,19 @@ export function useContractGeneration({
     }
 
     let voiceGenerationPromise: Promise<VoiceGenerationResult> | null = null;
+    const voiceGate = createVoiceGenerationGate();
     if (capabilities.mimo) {
       logger.info('[Voice] 开始并行生成角色语音');
       voiceGenerationPromise = generateCharacterVoices(generatedInfo, apiKeys, (current, total, skillType) => {
         logger.debug(`[Voice] 生成进度: ${current}/${total} - ${skillType}`);
+      }, (voice) => {
+        logger.debug('[Voice] 单条语音已生成', voice.skillType);
+        voiceGate.addVoice(voice);
       }).catch(error => {
         logger.error('[Voice] 语音生成异常', error);
         return { success: false, error: error instanceof Error ? error.message : '未知错误' };
+      }).finally(() => {
+        voiceGate.finish();
       });
     } else {
       logger.warn('[Voice] 未配置 MiMo API Key，跳过语音生成');
@@ -149,10 +156,16 @@ export function useContractGeneration({
     }
 
     const finalizeCharacter = async (info: CharacterInfo) => {
-      onCharacterReady(info);
+      if (voiceGenerationPromise) {
+        logger.info('[Voice] 等待出场语音准备后展示角色卡');
+        await voiceGate.waitForAutoPlayVoice();
+      }
+
+      const initialVoices = voiceGate.buildCharacterVoices(info);
+      onCharacterReady(initialVoices ? { ...info, voices: initialVoices } : info);
 
       if (voiceGenerationPromise) {
-        logger.info('[Voice] 等待语音生成完成');
+        logger.info('[Voice] 等待完整语音生成完成');
         const voiceResult = await voiceGenerationPromise;
         if (voiceResult?.success && voiceResult?.data) {
           logger.info('[Voice] 语音生成成功');

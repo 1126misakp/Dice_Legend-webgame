@@ -523,7 +523,8 @@ export async function generateSpeechWithMimo(
 export async function generateCharacterVoices(
   characterInfo: CharacterInfo,
   apiKeys: ApiKeys,
-  onProgress?: (current: number, total: number, skillType: SkillType) => void
+  onProgress?: (current: number, total: number, skillType: SkillType) => void,
+  onVoiceReady?: (voice: VoiceData) => void
 ): Promise<VoiceGenerationResult> {
   try {
     const mimoVoiceApiKey = getMimoVoiceApiKey(apiKeys);
@@ -558,12 +559,14 @@ export async function generateCharacterVoices(
         apiKeys.textProvider === 'openRouter'
       );
 
-      voices.push({
+      const voiceData: VoiceData = {
         voiceId: result.voiceId,
         audioDataHex: result.audioData,
         skillType,
         line
-      });
+      };
+      voices.push(voiceData);
+      onVoiceReady?.(voiceData);
 
       lastVoiceId = result.voiceId;
 
