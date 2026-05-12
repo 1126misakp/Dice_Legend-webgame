@@ -15,6 +15,7 @@ type VoiceAudioWindow = Window & typeof globalThis & {
 };
 
 let voiceAudioContext: AudioContext | null = null;
+let voiceAudioUnlocked = false;
 
 // 稀有度对应的语音数量
 export const VOICE_COUNT_BY_RARITY: Record<string, number> = {
@@ -87,6 +88,15 @@ export async function initVoiceAudioPlayback(): Promise<AudioContext | null> {
 
   if (voiceAudioContext.state === 'suspended') {
     await voiceAudioContext.resume();
+  }
+
+  if (!voiceAudioUnlocked && voiceAudioContext.state === 'running') {
+    const silentBuffer = voiceAudioContext.createBuffer(1, 1, 22050);
+    const source = voiceAudioContext.createBufferSource();
+    source.buffer = silentBuffer;
+    source.connect(voiceAudioContext.destination);
+    source.start(voiceAudioContext.currentTime);
+    voiceAudioUnlocked = true;
   }
 
   return voiceAudioContext;
