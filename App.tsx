@@ -477,7 +477,7 @@ export default function App() {
 
       {/* 左上工具区，角色卡展示时隐藏 */}
       {gameState !== GameState.SHOW_CARD && (
-        <div className={`absolute top-3 left-3 right-3 md:top-6 md:left-6 md:right-auto z-40 flex flex-col items-start gap-3 max-w-[calc(100vw-1.5rem)] md:max-w-[22rem] max-h-[calc(100vh-7rem)] overflow-y-auto overscroll-contain pr-1 transition-all duration-500 ${peekMode ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+        <div className={`absolute top-3 left-3 right-3 md:top-6 md:left-6 md:right-auto z-40 flex flex-col items-start gap-3 max-w-[calc(100vw-1.5rem)] md:max-w-[22rem] max-h-[calc(100vh-9rem)] overflow-y-auto overscroll-contain pr-1 transition-all duration-500 ${peekMode ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
           <div className="flex flex-wrap items-start gap-2 md:gap-3 max-w-full">
             <div className="academy-glass backdrop-blur-xl p-2.5 md:p-4 rounded-xl md:rounded-2xl flex items-center gap-2.5 md:gap-4 max-w-full min-w-0">
               <button
@@ -543,7 +543,7 @@ export default function App() {
       {gameState !== GameState.SHOW_CARD && (
         <button
             onClick={() => setPeekMode(!peekMode)}
-            className={`absolute bottom-20 right-3 md:bottom-8 md:right-8 z-50 w-11 h-11 md:w-16 md:h-16 rounded-xl md:rounded-2xl flex items-center justify-center transition-all duration-300 shadow-lg border ${peekMode ? 'bg-amber-500 text-slate-950 border-amber-200 shadow-amber-500/30 scale-105' : 'bg-blue-950/75 backdrop-blur-md border-amber-200/35 text-amber-100 hover:text-white hover:bg-blue-900/90'}`}
+            className={`absolute bottom-3 left-3 md:bottom-6 md:left-6 z-50 w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center transition-all duration-300 shadow-lg border ${peekMode ? 'bg-amber-500 text-slate-950 border-amber-200 shadow-amber-500/30 scale-105' : 'bg-blue-950/75 backdrop-blur-md border-amber-200/35 text-amber-100 hover:text-white hover:bg-blue-900/90'}`}
             title={peekMode ? '显示界面' : '隐藏界面'}
         >
             <Eye size={24} />
