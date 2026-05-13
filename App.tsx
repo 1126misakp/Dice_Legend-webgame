@@ -477,7 +477,7 @@ export default function App() {
 
       {/* 左上工具区，角色卡展示时隐藏 */}
       {gameState !== GameState.SHOW_CARD && (
-        <div className={`absolute top-3 left-3 right-3 md:top-6 md:left-6 md:right-auto z-40 flex flex-col items-start gap-3 max-w-[calc(100vw-1.5rem)] md:max-w-[18.5rem] transition-all duration-500 ${peekMode ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+        <div className={`absolute top-3 left-3 right-3 md:top-6 md:left-6 md:right-auto z-40 flex flex-col items-start gap-3 max-w-[calc(100vw-1.5rem)] md:max-w-[22rem] max-h-[calc(100vh-7rem)] overflow-y-auto overscroll-contain pr-1 transition-all duration-500 ${peekMode ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
           <div className="flex flex-wrap items-start gap-2 md:gap-3 max-w-full">
             <div className="academy-glass backdrop-blur-xl p-2.5 md:p-4 rounded-xl md:rounded-2xl flex items-center gap-2.5 md:gap-4 max-w-full min-w-0">
               <button
@@ -516,7 +516,7 @@ export default function App() {
             </div>
           </div>
 
-          <div className="w-full max-w-[18.5rem] flex flex-col gap-2">
+          <div className="w-full max-w-[22rem] flex flex-col gap-2">
             <InventoryBar
               inventory={inventory}
               activeFixedCount={fixedDiceIndices.length}
@@ -524,10 +524,7 @@ export default function App() {
               onCancelWeightedDice={handleCancelWeightedDice}
               orientation="vertical"
             />
-            <div className="academy-glass rounded-xl px-3 py-2 text-[10px] md:text-[11px] text-amber-100/64 font-black uppercase tracking-[0.22em] leading-relaxed">
-              Crest: {fixedDiceIndices.length}<br />
-              Weighted: {weightedDiceIndices.length}
-            </div>
+            <ResultPanel result={result} visible={!!result} />
             {(!capabilities.text || !capabilities.runningHub || !capabilities.mimo) && (
               <button
                 onClick={() => setIsApiSettingsOpen(true)}
@@ -552,11 +549,6 @@ export default function App() {
             <Eye size={24} />
         </button>
       )}
-
-      {/* 结果信息面板，角色卡展示时隐藏 */}
-      <div className={`absolute top-24 left-3 right-3 md:top-8 md:left-auto md:right-5 lg:right-8 z-20 w-auto md:w-[22rem] xl:w-96 max-h-[calc(100vh-16rem)] md:max-h-[calc(100vh-15rem)] overflow-y-auto overscroll-contain flex flex-col gap-6 transition-all duration-500 ${peekMode || gameState === GameState.SHOW_CARD ? 'translate-x-[120%] opacity-0 pointer-events-none' : 'translate-x-0 opacity-100'}`}>
-        <ResultPanel result={result} visible={!!result} />
-      </div>
 
       {/* Summon Animation & Card */}
       {gameState === GameState.SHOW_CARD && charInfo && (
